@@ -193,7 +193,9 @@ def load_sessions(now: float | None = None) -> list[dict]:
             _SESSION_CACHE.pop(str(p), None)
             continue  # dead session files linger (or the pid now belongs to something else)
         age = now - d["updatedAt"] / 1000
-        if age > STALE_S:
+        # updatedAt moves only on status changes: a long busy turn (e.g. right after Restart & Resume)
+        # is old but working, so only a quiet, non-working session goes stale
+        if age > STALE_S and d.get("status") not in ("busy", "shell"):
             d["state"] = "stale"
         elif d.get("status") == "idle" and d.get("kind", "interactive") == "interactive":
             d["state"] = "waiting"
