@@ -55,6 +55,7 @@ export class MapPanel {
       if (message?.type === 'select' && typeof message.id === 'string') {
         void vscode.commands.executeCommand('pengupool.switch', message.id);
       }
+      if (message?.type === 'refresh') { this.render(); }
       if (message?.type === 'tab' && this.tabs.pick(message.harness)) { this.render(); }
     });
     this.panel.onDidDispose(() => { if (MapPanel.current === this) { MapPanel.current = undefined; } });
@@ -108,6 +109,12 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   .meta { color:var(--vscode-descriptionForeground); font-size:10px; line-height:14px;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .chain { font-size:10px; line-height:14px; overflow-wrap:anywhere; flex-shrink:0; }
+  .probe { position:absolute; visibility:hidden; left:-10000px; top:0; height:auto; }
+  .wprobe { position:absolute; visibility:hidden; left:-10000px; top:0; white-space:nowrap; display:inline-block; }
+  #refresh { position:absolute; top:4px; right:8px; z-index:2; cursor:pointer; padding:2px 8px; border-radius:3px;
+             border:1px solid var(--vscode-button-border, transparent); font:inherit; font-size:11px;
+             background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); }
+  #refresh:hover { background:var(--vscode-button-secondaryHoverBackground); }
   #empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
            color: var(--vscode-descriptionForeground); }
   ${HARNESS_TABS_CSS}
@@ -115,6 +122,7 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   body.tabbed #wrap, body.tabbed #empty { top:28px; }
 </style></head><body>
 ${HARNESS_TABS_HTML}
+<button id="refresh" title="Re-measure cards and redraw the map">⟳ Refresh</button>
 <div id="empty">no sessions</div>
 <div id="wrap"><svg id="svg" width="100%" height="100%"><g id="scene"></g></svg></div>
 <script nonce="${nonce}" src="${dagreUri}"></script>
@@ -125,7 +133,7 @@ ${HARNESS_TABS_HTML}
   const SVGNS = 'http://www.w3.org/2000/svg';
   const HTMLNS = 'http://www.w3.org/1999/xhtml';
   const states = ${JSON.stringify(SESSION_STATES)};
-  let topo = null, sizes = '';
+  let topo = null, sizes = '', last = null;
   let selected = '';
   const nodeEls = new Map();
 
@@ -138,15 +146,20 @@ ${HARNESS_TABS_HTML}
     (cross||[]).forEach(([s,d,l]) => { if(byName[s]&&byName[d]) list.push([byName[s], byName[d], l||'']); });
     return list;
   }
-  // Card size estimated from content (dagre needs sizes before layout): ~7px per name char at 12px,
-  // ~6px per char at 10px, 14px lines, 6px/10px padding. ctx% is sized as "100%" so it never relayouts.
+  // Card size MEASURED from the real fonts (dagre needs sizes before layout): an offscreen card holds
+  // the same content and styles. ctx% is sized as "100%" so a changing percentage never relayouts.
+  const probe = hel('div',{class:'content probe'}); const wprobe = hel('span',{class:'wprobe'});
+  document.body.appendChild(probe); document.body.appendChild(wprobe);
+  function textW(text, cls){ wprobe.className='wprobe '+cls; wprobe.textContent=text; return wprobe.getBoundingClientRect().width; }
   function cardSize(n){
-    const meta = (n.harness==='pi'?5:0) + (n.ctx_pct!=null?7:0) + (n.repo||'').length;
-    const chain = (n.status||'').length;
-    const width = Math.round(Math.min(chain ? 320 : 220, Math.max(140, n.name.length*7+20, meta*6+20, Math.min(chain, 40)*6+20)));
-    const inner = width - 20;
-    const lines = 2 + Math.min(2, Math.ceil(n.name.length*7/inner)) + (chain ? Math.ceil(chain*6/inner) : 0);
-    return { width, height: lines*14 + 12 };
+    const meta = (n.harness==='pi'?'pi · ':'') + (n.ctx_pct!=null?'100% · ':'') + (n.repo||'');
+    const chain = n.status||'';
+    const width = Math.ceil(Math.min(chain ? 320 : 220, Math.max(140, textW(n.name,'nm')+22, textW(meta,'meta')+22,
+                                                               Math.min(textW(chain,'chain'), 240)+22)));
+    probe.style.width = width+'px'; probe.innerHTML = '';
+    [['state','● Active'], ['nm', n.name], ['meta', meta], ['chain', chain]].forEach(([cls, text]) => {
+      if(!text) return; const d=hel('div',{class:cls}); d.textContent=text; probe.appendChild(d); });
+    return { width, height: Math.ceil(probe.getBoundingClientRect().height) + 2 };
   }
   function sizeKey(roots){ return flat(roots).map(n => { const c=cardSize(n); return n.id+':'+c.width+'x'+c.height; }).join(); }
   function el(tag, attrs){ const e=document.createElementNS(SVGNS,tag); for(const k in attrs) e.setAttribute(k, attrs[k]); return e; }
@@ -216,11 +229,15 @@ ${HARNESS_TABS_HTML}
       nodeEls.forEach((e,id)=>e.grp.classList.toggle('selected', id===selected));
       return;
     }
-    const snap = ev.data;
+    const snap = last = ev.data;
     const key = sizeKey(snap.roots);
     if(snap.topo_hash !== topo || key !== sizes){ topo = snap.topo_hash; sizes = key; relayout(snap); }
     restyle(snap);
   });
+  // Refresh: forget the cached layout and redraw now, then ask for a fresh snapshot.
+  function redraw(){ topo = null; sizes = ''; if(last){ relayout(last); restyle(last); } }
+  document.getElementById('refresh').addEventListener('click', () => { redraw(); vscode.postMessage({type:'refresh'}); });
+  document.fonts?.ready.then(redraw);   // sizes measured before the editor font loaded are wrong
   vscode.postMessage({type:'ready'});
 </script></body></html>`;
 }

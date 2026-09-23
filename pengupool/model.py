@@ -1,4 +1,4 @@
-"""Read Claude Code's on-disk state and build session trees. Pure functions, no TUI."""
+"""Read Claude Code's on-disk state and build session trees. Pure functions, no UI."""
 from __future__ import annotations
 
 import json
@@ -68,7 +68,7 @@ def _json(p: Path):
 
 
 def write_json(p: Path, data) -> None:
-    """Atomic: several hooks and the TUI may write the same file; a reader must never see a torn file."""
+    """Atomic: several hooks and front-ends may write the same file; a reader must never see a torn file."""
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, indent=1))
@@ -414,7 +414,7 @@ def build_trees(sessions: list[dict], edges: list[Edge], registry: dict[str, str
 def snapshot(light: bool = False) -> tuple[list[Node], list[Edge], list["Msg"]]:
     """The tree comes ONLY from manual groups (the `g` action) — it never re-parents itself from
     message traffic, so the hierarchy is stable until the user regroups. Messages still feed the log.
-    `light` (used by the per-prompt hook when the TUI is not running): no transcript tailing, no writes."""
+    `light` (used by the per-prompt hook when tree.json is stale): no transcript tailing, no writes."""
     from . import profiles  # profiles builds on this module
     sessions = load_sessions()
     msgs = [] if light else TRANSCRIPTS.scan(sessions)
@@ -476,7 +476,7 @@ def harness_of_past(sid: str, cwd: str) -> str:
 def past_sessions(cwd: str, limit: int = 20) -> list[tuple[str, str, str]]:
     """(session_id, title, harness) for a cwd across harnesses, newest first. Title = the session's
     own name (Claude /rename, pi /alias or --name) or its first user line.
-    Pure disk read (no TUI), so the CLI (`pengupool ctl past`) and the extension can reuse it."""
+    Pure disk read, so the CLI (`pengupool ctl past`) and the extension can reuse it."""
     def mtime(p: Path) -> float:
         try:
             return p.stat().st_mtime

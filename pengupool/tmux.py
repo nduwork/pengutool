@@ -10,11 +10,10 @@ import time
 from . import harness, model
 
 SESSION = "pengupool"  # tmux session that holds every Claude window
-SESS = harness.SOCK["cc"]  # Claude's sessions server (-L): shared by the TUI and the VS Code extension,
-#                            so a session started in either is attachable in the other (no restart).
+SESS = harness.SOCK["cc"]  # Claude's sessions server (-L): shared by every VS Code/Cursor window,
+#                            so a session started in one is attachable in another (no restart).
 #                            pi sessions live on their own server, harness.SOCK["pi"]: every helper below
 #                            takes `h` ("cc" | "pi") and talks only to that harness's server.
-OUTER = "pengupool-ui"  # private tmux server (-L) that hosts the TUI's own 3 panes
 # Legacy: the launcher used to pass the user's ambient socket; sessions now always live on `-L SESS`
 # so both front-ends agree. Kept as no-op env reads for backwards compat with any old launcher.
 USER_SOCK = os.environ.get("PENGUPOOL_USER_SOCK", "")
@@ -37,21 +36,6 @@ def _cached(key: str, ttl: float, *args: str, h: str = "cc") -> str:
 
 def _user(*args: str, h: str = "cc") -> list[str]:
     return ["tmux", "-L", harness.SOCK[h], *args]  # the harness's shared PenguPool sessions server
-
-
-def outer(*args: str) -> str:
-    """Run a command on PenguPool's private UI server."""
-    try:
-        return subprocess.run(["tmux", "-L", OUTER, *args], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-
-
-def outer_ok(*args: str) -> bool:
-    try:
-        return subprocess.run(["tmux", "-L", OUTER, *args], capture_output=True, timeout=5).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
 
 
 def safe_arg(s: str) -> str:
@@ -163,7 +147,7 @@ def view_command(pane: str, name: str, view_id: str = "", h: str = "cc") -> str:
         return ""
     if view_id:
         cleanup_extension_views(view, h)
-    enable_mouse_copy(h)  # the extension's views copy the same way, even with no TUI running
+    enable_mouse_copy(h)  # the extension's views auto-copy a drag selection
     # `\;` are passed through the shell to tmux as command separators.
     return (f"tmux -L {harness.SOCK[h]} new-session -A -s {shlex.quote(view)} -t {SESSION} "
             f"\\; select-window -t {shlex.quote(view + ':' + win)} "
@@ -178,7 +162,7 @@ def select_view(pane: str, view_id: str, h: str = "cc") -> bool:
     if not view or not _ok("has-session", "-t", "=" + view, h=h):
         return False
     target = f"{view}:{win}"
-    # TUI clients used to leave shared windows in tmux's manual-size mode. Restore automatic
+    # Older clients could leave shared windows in tmux's manual-size mode. Restore automatic
     # sizing and mark the extension's client as latest so its integrated terminal fills the panel.
     if not (_ok("set-option", "-w", "-t", target, "window-size", "latest", h=h) and
             _ok("select-window", "-t", target, h=h)):
@@ -221,52 +205,6 @@ def enable_mouse_copy(h: str = "cc") -> None:
             "run-shell", "-b", hide_status, h=h)
 
 
-def show_in_client(tty: str, pane: str, h: str = "cc") -> bool:
-    """Point the nested client (`tty`) at `pane` without touching the user's own clients: tmux keeps
-    'current window' per session, so we attach the client to a grouped view session (shares the
-    windows, has its own current window) and select the window there."""
-    info = _run("display-message", "-p", "-t", pane, "#{session_group}\t#{session_name}\t#{window_index}",
-                h=h).rstrip("\r\n")
-    if info.count("\t") != 2:
-        return False
-    group, sname, widx = info.split("\t")
-    session = (group or sname)
-    if session.startswith("pv-"):
-        session = session[3:]
-    view = "pv-tui-" + safe_arg(session)[:40]
-    if not _ok("has-session", "-t", "=" + view, h=h):
-        if not _ok("new-session", "-d", "-t", session, "-s", view, h=h):
-            return False
-        _ok("set-option", "-t", view, "status", "off", h=h)
-        # mouse ON so the wheel scrolls Claude's history and clicks land in the work pane; a left-drag
-        # selects text and auto-copies to the clipboard on release (see enable_mouse_copy).
-        _ok("set-option", "-t", view, "mouse", "on", h=h)
-    enable_mouse_copy(h)
-    if not (_ok("switch-client", "-c", tty, "-t", view, h=h) and _ok("select-window", "-t", f"{view}:{widx}", h=h)
-            and _ok("select-pane", "-t", pane, h=h)):
-        return False
-    fit_window(tty, f"{view}:{widx}", h)
-    return True
-
-
-def fit_window(tty: str, window: str, h: str = "cc") -> None:
-    """Let the shared window follow the latest active client as either front end is resized.
-
-    An explicit ``resize-window`` permanently changes tmux's per-window policy to ``manual``. That
-    leaves dotted unused space when a VS Code terminal later grows, so restore automatic sizing.
-    ``tty`` remains part of the helper signature because callers identify the client they switched.
-    """
-    del tty
-    _ok("set-option", "-w", "-t", window, "window-size", "latest", h=h)
-
-
-def kill_views() -> None:
-    """Remove only TUI-owned views on every harness server; extension clients may still be attached."""
-    for h in harness.HARNESSES:
-        for line in _run("list-sessions", "-F", "#{session_name}", h=h).splitlines():
-            if line.startswith("pv-tui-"):
-                _ok("kill-session", "-t", "=" + line, h=h)
-
 
 def _spawn(cwd: str, name: str, command: str, h: str) -> str:
     if not ensure_server(h):
@@ -292,11 +230,16 @@ def reserve_window(cwd: str, name: str, h: str = "cc") -> str:
     # unless the reserved pane is still there and can receive the resume command.
     if not pane or _run("display-message", "-p", "-t", pane, "#{pane_id}", h=h).strip() != pane:
         return ""
-    # Keep a failed resume's output visible instead of letting tmux close the window immediately.
-    if not _ok("set-option", "-w", "-t", pane, "remain-on-exit", "on", h=h):
+    if not hold(pane, h):
         kill_reserved(pane, h)
         return ""
     return pane
+
+
+def hold(pane: str, h: str = "cc") -> bool:
+    """Keep the pane after its agent exits (tmux would close the window), so it can be respawned and a
+    failed resume's output stays visible."""
+    return _ok("set-option", "-w", "-t", pane, "remain-on-exit", "on", h=h)
 
 
 def start_reserved(pane: str, cwd: str, name: str, session_id: str, h: str = "cc") -> bool:

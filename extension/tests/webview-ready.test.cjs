@@ -109,7 +109,8 @@ test('log explains message direction colors', () => {
   const h = loadPanel('logPanel');
   h.exports.LogPanel.show(snapshot, 1);
   assert.match(h.html(), /class="g">parent → child/);
-  assert.match(h.html(), /class="o">child → parent/);
+  assert.match(h.html(), /class="b">child → parent/);
+  assert.match(h.html(), /class="o">@session \(user-tagged\)/);
 });
 
 test('log rows preview one line and expand on click', () => {
@@ -136,16 +137,36 @@ test('map node labels stay inside bounded cards', () => {
   assert.match(h.html(), /foreignObject/);
 });
 
+// A DOM just big enough for the map script: text is 6px per character, a card probe 14px per line + 12px padding.
+function fakeDom() {
+  const make = () => {
+    const e = {
+      style: {}, children: [], textContent: '', className: '',
+      setAttribute(k, v) { if (k === 'class') { e.className = v; } }, appendChild(c) { e.children.push(c); },
+      addEventListener() {}, set innerHTML(_) { e.children = []; },
+      getBoundingClientRect: () => (/\bprobe\b/.test(e.className)
+        ? { height: e.children.length * 14 + 12 } : { width: e.textContent.length * 6 }),
+    };
+    return e;
+  };
+  return { getElementById: make, querySelectorAll: () => [], createElementNS: make, body: make() };
+}
+
+test('map has a refresh button that redraws and asks for a fresh snapshot', () => {
+  const h = loadPanel('mapPanel');
+  h.exports.MapPanel.show({ extensionUri: 'extension' }, snapshot, 1);
+  assert.match(h.html(), /id="refresh"/);
+  assert.match(h.html(), /type:'refresh'/);
+  const before = h.data().length;
+  h.send({ type: 'refresh' });
+  assert.equal(h.data().length, before + 1);
+});
+
 test('map refreshes workflow and context without a topology change', () => {
   const h = loadPanel('mapPanel');
   h.exports.MapPanel.show({ extensionUri: 'extension' }, snapshot, 1);
   const script = [...h.html().matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)[1];
-  const element = () => ({ style: {}, setAttribute() {}, appendChild() {}, addEventListener() {} });
-  const sandbox = {
-    acquireVsCodeApi: () => ({ postMessage() {} }),
-    document: { getElementById: element, querySelectorAll: () => [] },
-    window: { addEventListener() {} },
-  };
+  const sandbox = { acquireVsCodeApi: () => ({ postMessage() {} }), document: fakeDom(), window: { addEventListener() {} } };
   vm.createContext(sandbox);
   vm.runInContext(script, sandbox);
   vm.runInContext(`
@@ -221,18 +242,13 @@ test('map cards stay compact without a chain and grow with its length', () => {
   const h = loadPanel('mapPanel');
   h.exports.MapPanel.show({ extensionUri: 'extension' }, snapshot, 1);
   const script = [...h.html().matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)[1];
-  const element = () => ({ style: {}, setAttribute() {}, appendChild() {}, addEventListener() {} });
-  const sandbox = {
-    acquireVsCodeApi: () => ({ postMessage() {} }),
-    document: { getElementById: element, querySelectorAll: () => [] },
-    window: { addEventListener() {} },
-  };
+  const sandbox = { acquireVsCodeApi: () => ({ postMessage() {} }), document: fakeDom(), window: { addEventListener() {} } };
   vm.createContext(sandbox);
   vm.runInContext(script, sandbox);
   const size = (status, ctx = 12) => vm.runInContext(
     `cardSize({name:'worker', repo:'repo', ctx_pct:${ctx}, status:${JSON.stringify(status)}, children:[]})`, sandbox);
   const compact = size(''), short = size('[fix] a ●'), long = size('[harness-tabs] ext ● → tui ○ → verify ○ → pr ○ → release ○');
-  assert.deepEqual({ ...compact }, { width: 140, height: 3 * 14 + 12 }, 'state, name and meta lines only');
+  assert.deepEqual({ ...compact }, { width: 140, height: 3 * 14 + 12 + 2 }, 'state, name and meta lines only (+2px slack)');
   assert.ok(short.height > compact.height);
   assert.ok(long.width > short.width || long.height > short.height);
   assert.ok(long.width * long.height > short.width * short.height);

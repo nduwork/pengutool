@@ -1,7 +1,8 @@
-"""Session profiles: what each session owns, keyed by session id.
+"""Session profiles (docs/group-session-framework.md): what each session owns, keyed by session id.
 
-~/.pengupool/profiles/<sid>.json = {schema, session_id, workspace, summary, responsibility,
-description_source, description_editor, updated_at}. One file per session, so a session can update
+~/.pengupool/profiles/<sid>.json = {schema, session_id, workspace, summary, responsibility, keywords,
+description_source, description_editor, updated_at}. `keywords` are the routing terms the prompt hook
+matches a request against (context.route_match). One file per session, so a session can update
 its own description without rewriting the shared groups.json. Shared by both harnesses."""
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from pathlib import Path
 from . import model
 
 PROFILES = model.PENGU / "profiles"
-SUMMARY_MAX, RESPONSIBILITY_MAX = 120, 600
+SUMMARY_MAX, RESPONSIBILITY_MAX, KEYWORDS_MAX = 120, 600, 12
 INDICATORS = ("pyproject.toml", "package.json", "Cargo.toml", "go.mod", "pom.xml", "build.gradle",
               "Gemfile", "requirements.txt", "Makefile", "Dockerfile", "main.nf", "Snakefile")
 MAX_ENTRIES, MAX_REPOS, BUDGET_S = 500, 20, 0.2
@@ -136,7 +137,18 @@ def parent_of(sid: str) -> str:
     return ""
 
 
-def describe(sid: str, summary: str | None, responsibility: str | None, editor: str | None = None) -> dict:
+def keywords(text: str) -> list[str]:
+    """'Snowflake, ML platform; RND' -> ['snowflake', 'ml platform', 'rnd']: lowercase routing terms."""
+    out = []
+    for k in re.split(r"[,;\n]", str(text)):
+        k = clean(k, 40).lower()
+        if k and k not in out:
+            out.append(k)
+    return out[:KEYWORDS_MAX]
+
+
+def describe(sid: str, summary: str | None, responsibility: str | None, editor: str | None = None,
+             keywords_text: str | None = None) -> dict:
     """Set a session's summary/responsibility. `editor` is the calling session ('' = the user), resolved
     by the caller with caller(). A session may edit itself or a direct child; the user may edit any."""
     if not _path(sid) or sid not in {s["sessionId"] for s in model.load_sessions()}:
@@ -149,6 +161,8 @@ def describe(sid: str, summary: str | None, responsibility: str | None, editor: 
         d["summary"] = clean(summary, SUMMARY_MAX)
     if responsibility is not None:
         d["responsibility"] = clean(responsibility, RESPONSIBILITY_MAX)
+    if keywords_text is not None:
+        d["keywords"] = keywords(keywords_text)
     d.update(description_source="session" if editor == sid else ("parent" if editor else "user"),
              description_editor=editor or "user", updated_at=_now())
     return _save(d)

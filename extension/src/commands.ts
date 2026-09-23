@@ -156,6 +156,15 @@ export function registerCommands(context: vscode.ExtensionContext, d: Deps): voi
     if (n) { await d.terminals.send(n, '/compact'); }
   });
 
+  reg('pengupool.restart', async (node?: SessionNode) => {
+    const n = sel(node);
+    if (!n) { return; }
+    const ok = await vscode.window.showWarningMessage(
+      `Restart "${n.name}"? Its current turn is interrupted, then it resumes in place ` +
+      `with the installed ${HARNESS_LABEL[n.harness ?? 'cc']}.`, { modal: true }, 'Restart');
+    if (ok) { await d.terminals.restart(n); }
+  });
+
   reg('pengupool.close', async (node?: SessionNode) => {
     const n = sel(node);
     if (!n) { return; }

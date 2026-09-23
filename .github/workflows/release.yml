@@ -1,4 +1,7 @@
 name: release
+# A release IS a tag. `scripts/release.sh` bumps the version, updates CHANGELOG.md, tags vX.Y.Z and
+# pushes; this job then tests, builds the wheel + pengupool.vsix (install.sh downloads it) and publishes
+# the GitHub Release with the changelog section as notes. Nothing is tagged from CI.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
@@ -41,7 +44,7 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
           awk -v v="$v" '/^## \[/{p = index($0, "## [" v "]") == 1} p' CHANGELOG.md > "$notes"
           [ -s "$notes" ] || echo "Release ${GITHUB_REF_NAME}" > "$notes"
-          { echo; echo "Install: clone https://github.com/${GITHUB_REPOSITORY}, check out ${GITHUB_REF_NAME}, then run \`make install\` (or \`make ext-deps install-all\` for Cursor)."; } >> "$notes"
+          { echo; echo "Install everything (CLI, harness wiring, tracker, and the extension in every VS Code/Cursor found):"; echo; echo "\`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/install.sh | PENGUPOOL_REF=${GITHUB_REF_NAME} bash\`"; } >> "$notes"
       - name: Publish
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: gh release create "${GITHUB_REF_NAME}" "$RUNNER_TEMP/pengupool-dist/"* "$RUNNER_TEMP/pengupool.vsix" --title "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md" --latest

@@ -1,8 +1,7 @@
-"""`pengupool serve` — the shared backend for non-terminal front-ends (the VS Code extension).
+"""`pengupool serve` — the shared backend for the VS Code/Cursor extension.
 
 Emits the session graph as newline-delimited JSON on stdout, one snapshot per poll tick, reusing
-`model.snapshot()` — the exact data the Textual TUI renders. This is the ONE resource shared between
-the terminal app and the extension: both read the same model; only the view differs.
+`model.snapshot()`, the same model the hooks and `pengupool ctl` read.
 
 Wire format (one JSON object per line):
 
@@ -16,7 +15,7 @@ relayout its graph only when the hash changes and otherwise just restyle nodes i
 ctx%, workflow step), which is what makes a 1 Hz refresh jump-free. Idle ticks are skipped: a
 snapshot is written only when it differs from the last one, and `rev` counts the ones actually sent.
 
-Run standalone (no Textual import) with `python -m pengupool.serve`, or via `pengupool serve`.
+Run standalone with `python -m pengupool.serve`, or via `pengupool serve`.
 """
 from __future__ import annotations
 
@@ -46,7 +45,7 @@ def _topo(roots: list[model.Node], cross: list[model.Edge]) -> str:
 
 
 def build() -> dict:
-    """One snapshot dict (no `rev`/`ts`; serve() adds those). Reuses the TUI's model.snapshot()."""
+    """One snapshot dict (no `rev`/`ts`; serve() adds those). Reuses model.snapshot()."""
     roots, cross, msgs = model.snapshot()
     return {"topo_hash": _topo(roots, cross),
             "roots": [_node(r) for r in roots],

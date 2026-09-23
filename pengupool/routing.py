@@ -1,4 +1,4 @@
-"""Adjacent-level routing: a grouped session messages only its
+"""Adjacent-level routing (docs/group-session-framework.md): a grouped session messages only its
 parent or a direct child; anything further is routed one edge at a time.
 
 `authorize_send` is the one pure rule both harnesses enforce before delivery — Claude through the
@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import time
 from dataclasses import dataclass
 
 from . import model
@@ -74,9 +75,51 @@ def route(t: Tree, current: str, target: str) -> str:
     raise LookupError("owner unknown: it is not in your tree")
 
 
+GRANTS = model.PENGU / "grants"  # <sid>.json = {"targets": [sid, ...], "ts": epoch}
+GRANT_TTL = 3600
+MENTION = re.compile(r"(?<![\w.@])@([\w][\w.~-]*)")  # @name / @id, not an email address
+
+
+def mentions(prompt: str) -> list[str]:
+    return [m.rstrip(".") for m in MENTION.findall(prompt or "")]
+
+
+def grant(sender: str, prompt: str, t: Tree | None = None) -> list[str]:
+    """The user's own prompt tags sessions with @name: lift the adjacent rule for sender <-> each tagged
+    live session of its harness until the sender's next prompt (at most GRANT_TTL). Called only from
+    the prompt hooks, which see what the user typed. Returns the tagged sessions' names."""
+    if not re.fullmatch(r"[\w.-]{1,128}", sender):  # sender is a path component
+        return []
+    names = mentions(prompt)
+    t = (t or live_tree()) if names else None
+    targets = []
+    for n in names:
+        hits = resolve(t, sender, n)
+        if len(hits) == 1 and (s := next(iter(hits))) != sender and s not in targets:
+            targets.append(s)  # an ambiguous tag grants nothing: the send must name a session id
+    p = GRANTS / f"{sender}.json"
+    if targets:
+        model.write_json(p, {"targets": targets, "ts": time.time()})
+    else:
+        p.unlink(missing_ok=True)
+    return [t.name[s] for s in targets]
+
+
+def granted(a: str, b: str) -> bool:
+    """The user tagged b in a's current prompt, or a in b's (so the tagged session can reply)."""
+    # ponytail: a file the agent could write itself, like groups.json; a per-prompt token from the hook
+    # would make it unforgeable
+    for x, y in ((a, b), (b, a)):
+        d = model._json(GRANTS / f"{x}.json") if re.fullmatch(r"[\w.-]{1,128}", x) else None
+        if isinstance(d, dict) and y in (d.get("targets") or []) and time.time() - float(d.get("ts", 0)) < GRANT_TTL:
+            return True
+    return False
+
+
 def authorize_send(sender: str, recipient: str, t: Tree | None = None) -> tuple[bool, str]:
     """(allowed, reason). Only a grouped sender is managed; a solo session keeps its normal behaviour.
-    A name that is no live session of this harness (a teammate, a typo) is left to the harness."""
+    A name that is no live session of this harness (a teammate, a typo) is left to the harness.
+    A session the user tagged with @name in the current prompt is reachable directly (see grant)."""
     t = t or live_tree()
     if sender not in t.parent or not adjacent(t, sender):
         return True, ""
@@ -84,7 +127,7 @@ def authorize_send(sender: str, recipient: str, t: Tree | None = None) -> tuple[
     if not hits:
         return True, ""
     ok = adjacent(t, sender)
-    if len(hits) == 1 and next(iter(hits)) in ok:
+    if len(hits) == 1 and (next(iter(hits)) in ok or granted(sender, next(iter(hits)))):
         return True, ""
     who = ", ".join(f"{'parent' if s == t.parent.get(sender) else 'child'} {t.name[s]}" for s in ok)
     if len(hits) > 1:
@@ -106,7 +149,16 @@ def main() -> None:
     if inp.get("tool_name") != "SendMessage":
         return
     tool = inp.get("tool_input") if isinstance(inp.get("tool_input"), dict) else {}
-    ok, reason = authorize_send(str(inp.get("session_id", "")), str(tool.get("to") or tool.get("recipient") or ""))
+    sender, to = str(inp.get("session_id", "")), str(tool.get("to") or tool.get("recipient") or "")
+    t = live_tree()
+    ok, reason = authorize_send(sender, to, t)
+    if ok:
+        try:  # a ROUTE REQUIRED child is now messaged: the Stop audit has nothing to say
+            from .context import routed
+            for hit in resolve(t, sender, to):
+                routed(sender, hit)
+        except Exception:
+            pass
     if not ok:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                                  "permissionDecision": "deny", "permissionDecisionReason": reason}}))

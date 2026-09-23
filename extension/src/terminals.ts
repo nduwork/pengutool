@@ -24,8 +24,7 @@ interface Slot {
   pending?: { pane: string; cwd: string };
 }
 
-/** One VS Code terminal per harness, each backed directly by one grouped tmux client, like the TUI
- * work pane. */
+/** One VS Code terminal per harness, each backed directly by one grouped tmux client. */
 export class TerminalManager implements vscode.Disposable {
   private readonly slots = new Map<Harness, Slot>([
     ['cc', { name: 'PenguPool', viewId: newViewId() }],
@@ -223,6 +222,22 @@ export class TerminalManager implements vscode.Disposable {
     if (result.code === 0 && result.stdout) { return this.open(result.stdout, node.id); }
     vscode.window.showErrorMessage(`PenguPool: ${result.stderr || 'could not adopt session'}`);
     return false;
+  }
+
+  /** Stop a session and resume it in its own pane; the view stays attached (same pane). */
+  async restart(node: SessionNode): Promise<boolean> {
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `PenguPool: restarting ${node.name}…` },
+      () => runCtl(['--json', 'restart', node.id, this.slot(node.harness).viewId]));
+    if (result.code !== 0 || !result.stdout) {
+      vscode.window.showErrorMessage(`PenguPool: ${result.stderr || 'could not restart session'}`);
+      return false;
+    }
+    // The pane id is unchanged, so a terminal already on it stays attached. Otherwise open the returned
+    // view: switching by id could run before the new process is registered and drop the terminal.
+    const slot = this.slot(node.harness);
+    if (this.usable(slot) && slot.currentId === node.id) { slot.term!.show(); return true; }
+    return this.open(result.stdout, node.id);
   }
 
   async close(node: SessionNode): Promise<void> {

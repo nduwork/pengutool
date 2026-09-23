@@ -206,6 +206,34 @@ def test_adopt_stops_then_resumes_with_its_harness(monkeypatch, capsys, h):
     assert capsys.readouterr().out.strip() == "VIEW %5 editor-1"
 
 
+@pytest.mark.parametrize("h", ["cc", "pi"])
+def test_restart_resumes_in_the_same_pane(monkeypatch, capsys, h):
+    monkeypatch.setattr(model, "load_registry", lambda: {"sid": "%7"})
+    monkeypatch.setattr(model, "load_sessions",
+                        lambda: [{"sessionId": "sid", "name": "worker", "cwd": "/repo", "pid": 4242, "harness": h}])
+    monkeypatch.setattr("pengupool.tmux.pane_owns", lambda pane, pid, h: pane == "%7")
+    monkeypatch.setattr(model, "resumable_transcript", lambda sid, cwd, h: True)
+    calls = []
+    monkeypatch.setattr("pengupool.tmux.hold", lambda pane, h: calls.append(("hold", pane)) or True)
+    monkeypatch.setattr("pengupool.tmux.stop", lambda pid, **k: calls.append(("stop", pid)) or True)
+    monkeypatch.setattr("pengupool.tmux.start_reserved", lambda pane, cwd, name, sid, h:
+                        calls.append(("start", pane, cwd, name, sid, h)) or True)
+    monkeypatch.setattr("pengupool.tmux.view_command", lambda pane, name, view, h: f"VIEW {pane} {view}")
+    assert ctl.main(["restart", "sid", "editor-1"]) == 0
+    assert calls == [("hold", "%7"), ("stop", 4242), ("start", "%7", "/repo", "worker", "sid", h)]
+    assert capsys.readouterr().out.strip() == "VIEW %7 editor-1"
+
+
+def test_restart_refuses_a_session_without_a_transcript(monkeypatch):
+    monkeypatch.setattr(model, "load_registry", lambda: {"sid": "%7"})
+    monkeypatch.setattr(model, "load_sessions", lambda: [{"sessionId": "sid", "cwd": "/repo", "pid": 4242}])
+    monkeypatch.setattr("pengupool.tmux.pane_owns", lambda pane, pid, h: True)
+    monkeypatch.setattr(model, "resumable_transcript", lambda sid, cwd, h: False)
+    monkeypatch.setattr("pengupool.tmux.stop", lambda pid, **k: pytest.fail("stopped a session it cannot resume"))
+    assert ctl.main(["restart", "sid"]) == 1
+    assert ctl.main(["restart", "gone"]) == 1
+
+
 def test_adopt_missing_session(monkeypatch):
     monkeypatch.setattr(model, "load_registry", lambda: {})
     monkeypatch.setattr(model, "load_sessions", lambda: [])

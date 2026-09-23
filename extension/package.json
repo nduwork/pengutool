@@ -2,7 +2,7 @@
   "name": "pengupool",
   "displayName": "PenguPool",
   "description": "Manage Claude Code and pi sessions with a shared tmux terminal, session tree, live map, and message log. Requires the PenguPool CLI.",
-  "version": "0.1.3",
+  "version": "0.1.0",
   "publisher": "nduwork",
   "license": "MIT",
   "repository": {
@@ -97,6 +97,10 @@
         "title": "PenguPool: Compact (/compact)"
       },
       {
+        "command": "pengupool.restart",
+        "title": "PenguPool: Restart & Resume"
+      },
+      {
         "command": "pengupool.showMap",
         "title": "PenguPool: Show Map",
         "icon": "$(type-hierarchy)"
@@ -175,6 +179,11 @@
       {
         "command": "pengupool.compact",
         "key": "c",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.restart",
+        "key": "shift+r",
         "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
       },
       {

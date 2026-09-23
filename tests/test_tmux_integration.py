@@ -78,16 +78,6 @@ def test_adopt_resumes_with_its_harness_on_its_own_server(servers, monkeypatch, 
             outside.wait(timeout=3)
 
 
-def test_tui_cleanup_leaves_extension_and_legacy_views(servers):
-    (shared, _, _), run = servers
-    for view in ("pv-ext-0", "pv-legacy", "pv-tui-pengupool"):
-        assert run(shared, "new-session", "-d", "-s", view, "-t", "pengupool").returncode == 0
-    tmux.kill_views()
-    assert run(shared, "has-session", "-t", "=pv-ext-0").returncode == 0
-    assert run(shared, "has-session", "-t", "=pv-legacy").returncode == 0
-    assert run(shared, "has-session", "-t", "=pv-tui-pengupool").returncode != 0
-
-
 def test_one_extension_view_switches_between_windows(servers):
     (shared, _, _), run = servers
     second = run(shared, "new-window", "-d", "-P", "-F", "#{pane_id}",

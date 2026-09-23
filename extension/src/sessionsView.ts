@@ -88,7 +88,7 @@ export class SessionsView implements vscode.WebviewViewProvider, vscode.Disposab
     const global = new Set(['pengupool.new', 'pengupool.add']);
     const perSession = new Set([
       'pengupool.switch', 'pengupool.group', 'pengupool.rename', 'pengupool.describe',
-      'pengupool.compact', 'pengupool.close',
+      'pengupool.compact', 'pengupool.restart', 'pengupool.close',
     ]);
     if (global.has(message.command)) {
       await vscode.commands.executeCommand(message.command);
@@ -183,6 +183,7 @@ export function sessionsHtml(): string {
       addMenuItem('Rename', 'pengupool.rename');
       addMenuItem('Describe Role…', 'pengupool.describe');
       addMenuItem('Compact (/compact)', 'pengupool.compact');
+      addMenuItem('Restart & Resume (Shift+R)', 'pengupool.restart');
       menu.appendChild(document.createElement('hr'));
       addMenuItem('Close', 'pengupool.close');
     }
@@ -245,8 +246,8 @@ export function sessionsHtml(): string {
       if(list[index]){ select(list[index].dataset.id); list[index].scrollIntoView({block:'nearest'}); } return;
     }
     if(event.key==='Enter'&&selected){ event.preventDefault(); command('pengupool.switch',selected); return; }
-    const shortcuts={n:'pengupool.new',a:'pengupool.add',g:'pengupool.group',r:'pengupool.rename',d:'pengupool.describe',x:'pengupool.close',c:'pengupool.compact'};
-    const cmd=shortcuts[event.key]; if(cmd&&(!['g','r','x','c'].includes(event.key)||selected)){
+    const shortcuts={n:'pengupool.new',a:'pengupool.add',g:'pengupool.group',r:'pengupool.rename',d:'pengupool.describe',x:'pengupool.close',c:'pengupool.compact',R:'pengupool.restart'};
+    const cmd=shortcuts[event.key]; if(cmd&&(!['g','r','x','c','R'].includes(event.key)||selected)){
       event.preventDefault(); command(cmd,selected); }
   });
   document.addEventListener('pointerdown',event=>{ if(!menu.contains(event.target)) hideMenu(); });

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-/** Static help pinned below the Sessions tree — the VS Code analogue of the TUI's bottom panel. */
+/** Static help pinned below the Sessions tree — the controls cheat sheet. */
 type Hint = { label: string; description?: string; icon?: string; children?: Hint[] };
 
 const HINTS: Hint[] = [
@@ -11,6 +11,7 @@ const HINTS: Hint[] = [
     { label: 'g / drag', description: 'group under session · empty = top level' },
     { label: 'r / x', description: 'rename · close session' },
     { label: 'right-click', description: 'all session actions' },
+    { label: 'Shift+R', description: 'restart & resume · picks up a Claude Code / pi update' },
     { label: 'c / /compact', description: 'compact · preserve group placement' },
     { label: 'Shift+Enter', description: 'prompt newline in Claude terminal' },
   ] },

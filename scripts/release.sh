@@ -6,7 +6,10 @@
 #      (feat: → minor, anything else → patch; first release uses pyproject's version as-is)
 #   3. pyproject.toml version, uv.lock, CHANGELOG.md ("Unreleased" → "[X.Y.Z] - date"; if the
 #      Unreleased section is empty, bullets are generated from commit subjects)
-#   4. commit "chore: release X.Y.Z", tag vX.Y.Z, push both → .github/workflows/release.yml publishes
+#   4. extension triage (release-status.sh): when a feat/fix touched extension/, bump
+#      extension/package.json (+ lock) and add its CHANGELOG section; the project CHANGELOG names
+#      the extension version the tag ships, so one tag = one matching backend + extension pair
+#   5. commit "chore: release X.Y.Z", tag vX.Y.Z, push both → .github/workflows/release.yml publishes
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 DRY=0; WANT=""; ALLOW_EMPTY=0
@@ -27,13 +30,13 @@ if [ "$worthy" != true ] && [ -z "$WANT" ] && [ "$ALLOW_EMPTY" != 1 ]; then
   exit 1
 fi
 git rev-parse -q --verify "refs/tags/v$next" >/dev/null && { echo "v$next already exists" >&2; exit 1; }
-echo "current $current → next $next  (last tag: ${last:-none})"
+echo "current $current → next $next  (last tag: ${last:-none}); extension $ext_current → ${ext_next:-unchanged}"
 
 # --- CHANGELOG: promote Unreleased, or synthesize from commits -----------------------------------
 today=$(date +%F)
-python3 - "$next" "$today" <<'PY'
-import re, subprocess, sys
-next_v, today = sys.argv[1], sys.argv[2]
+python3 - "$next" "$today" "$ext_next" "${last:-}" <<'PY'
+import json, re, subprocess, sys
+next_v, today, ext_next, last_tag = sys.argv[1:5]
 p = "CHANGELOG.md"
 try: text = open(p).read()
 except FileNotFoundError:
@@ -52,6 +55,26 @@ if not body:
         k = "Added" if s.startswith("feat") else "Fixed" if s.startswith(("fix", "perf")) else "Changed"
         groups[k].append("- " + re.sub(r"^[a-z]+(\([^)]*\))?!?:\s*", "", s))
     body = "\n\n".join(f"### {k}\n" + "\n".join(v) for k, v in groups.items() if v) or "- Maintenance release."
+if ext_next:
+    body += f"\n\n- Editor extension: {ext_next} (install both with `install.sh`; they ship together in this tag)."
+    # the extension's own version + changelog, only when it changed (a hand bump keeps its version)
+    for f in ("extension/package.json", "extension/package-lock.json"):
+        d = json.load(open(f))
+        d["version"] = ext_next
+        if "packages" in d:
+            d["packages"][""]["version"] = ext_next
+        open(f, "w").write(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
+    ec = "extension/CHANGELOG.md"
+    etext = open(ec).read()
+    if f"## {ext_next}\n" not in etext:
+        rng = f"{last_tag}..HEAD" if last_tag else "HEAD"
+        subs = subprocess.run(["git", "log", "--no-merges", "--pretty=%s", rng, "--", "extension/"],
+                              capture_output=True, text=True).stdout.splitlines()
+        lines = [re.sub(r"^[a-z]+(\([^)]*\))?!?:\s*", "- ", s) for s in subs if re.match(r"^(feat|fix|perf)", s)]
+        entry = f"## {ext_next}\n\n" + ("\n".join(lines) or "- Maintenance release.") + f"\n\nShips with PenguPool v{next_v}.\n\n"
+        head, sep, rest = etext.partition("\n## ")
+        etext = head.rstrip("\n") + "\n\n" + entry + (("## " + rest) if sep else "")
+        open(ec, "w").write(etext)
 section = f"## [{next_v}] - {today}\n\n{body}\n"
 if m:
     text = text[:m.start()] + "## [Unreleased]\n\n" + section + text[m.end():].lstrip("\n")
@@ -65,8 +88,8 @@ got=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/version = "([^"
 [ "$got" = "$next" ] || { echo "version bump failed: pyproject is $got, expected $next" >&2; exit 1; }
 uv lock --quiet
 
-if [ "$DRY" = 1 ]; then echo "--- dry run: would commit, tag v$next and push ---"; git --no-pager diff --stat; git checkout -q -- pyproject.toml uv.lock CHANGELOG.md; exit 0; fi
-git add pyproject.toml uv.lock CHANGELOG.md
+if [ "$DRY" = 1 ]; then echo "--- dry run: would commit, tag v$next and push ---"; git --no-pager diff --stat; git checkout -q -- pyproject.toml uv.lock CHANGELOG.md extension; exit 0; fi
+git add pyproject.toml uv.lock CHANGELOG.md extension/package.json extension/package-lock.json extension/CHANGELOG.md
 git commit -q -m "chore: release $next"
 git tag -a "v$next" -m "v$next"
 git push -q origin main "v$next"

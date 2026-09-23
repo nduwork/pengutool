@@ -12,7 +12,7 @@ from .model import CLAUDE, write_json
 # never let a broken/uninstalled PenguPool surface as a hook error in every Claude session
 CMD = f"{shlex.quote(sys.executable)} -m pengupool.context 2>/dev/null || true"
 # ...except the SendMessage routing guard, which fails closed: a crash or a missing interpreter exits 2,
-# which blocks the send.
+# which blocks the send (docs/group-session-framework.md, "Delivery guard")
 GUARD = f"{shlex.quote(sys.executable)} -m pengupool.routing || exit 2"
 LEGACY = "pengupool/session_start.sh"
 

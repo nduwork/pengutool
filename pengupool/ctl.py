@@ -1,8 +1,8 @@
 """`pengupool ctl <verb>` — one-shot backend ops for the VS Code extension (and the pi extension).
 
 The extension renders; the backend owns the tmux sessions servers (`-L pengupool` for Claude Code,
-`-L pengupool-pi` for pi) and the `~/.pengupool` state, so the same session is usable from the TUI and
-the extension (no restart to switch — tmux lets a live session be re-viewed). Commands that produce
+`-L pengupool-pi` for pi) and the `~/.pengupool` state, so the same session is usable from every editor
+window (no restart to switch — tmux lets a live session be re-viewed). Commands that produce
 output print it on stdout; errors print to stderr with a non-zero exit.
 Pass `--json` before the verb for launch metadata (command, pane, actual cwd, harness).
 
@@ -12,15 +12,19 @@ Verbs:
                                   possible); print the shell command a terminal runs to VIEW it
     resume <dir> <name> <sid>     resume a PAST (dead) session of either harness; print its view command
     adopt <sid>                   take over a LIVE session not on the server: stop it, then resume
+    restart <sid> [view]          stop a live session and resume it in its own pane (views stay attached),
+                                  e.g. to pick up a Claude Code or pi update; one outside PenguPool is adopted
     attach <sid> <name> [view]   print the view command for an already-running session (no restart)
     select <sid> <view>          switch one existing extension terminal to a live session
     close <sid>                   kill a running session's tmux window
     group <childSid> <parentSid|"">   move a session under a parent of the same harness, or "" for top level
     worktree-add <dir> <name>     git worktree for a session; print the path (or <dir>)
     past <dir>                    JSON [[sessionId, title, harness], …] of resumable past sessions
-    context <sid>                 print the session-tree context block for a session (used by the pi extension)
+    context <sid> [--prompt-stdin]  print the session-tree context block for a session (used by the pi
+                                  extension); with the user's prompt on stdin, its @session tags are
+                                  recorded first and let the session message those sessions directly
     register <sid> <cwd>          create/refresh a session's profile (workspace scan; used by the pi extension)
-    describe <sid> [--summary S] [--responsibility R]
+    describe <sid> [--summary S] [--responsibility R] [--keywords "a, b"]
                                   set what a session owns; allowed from the session itself, its parent, or the user
     profile <sid>                 JSON profile of a session (summary, responsibility, workspace, who edited it)
     tree <sid>                    the full session tree around a session, with summaries
@@ -106,7 +110,7 @@ def _resume(directory: str, name: str, sid: str, json_output: bool = False,
 def _adopt(sid: str, json_output: bool = False, view_id: str = "") -> int:
     """Take over a session that's alive but not on the shared server: STOP the running process first
     (resuming a still-live session would fork a duplicate — the `name~pid` you saw), then resume it
-    in a tmux window of its own harness. Mirrors the TUI's Enter-to-adopt."""
+    in a tmux window of its own harness. Backs the extension's Enter-to-adopt."""
     from . import tmux
     reg, sessions = _index()
     s = sessions.get(sid)
@@ -137,6 +141,40 @@ def _adopt(sid: str, json_output: bool = False, view_id: str = "") -> int:
               file=sys.stderr)
         return 1
     return _emit_view(pane, name, cwd, json_output, view_id, h)
+
+
+def restart(sid: str) -> tuple[str, str]:
+    """Stop a live PenguPool session and resume it in the same pane: the fresh process runs the current
+    agent binary and extensions, and the pane id is unchanged so every view stays attached.
+    Returns (pane, error); pane "" with no error means it is outside PenguPool (adopt it instead)."""
+    from . import tmux
+    reg, sessions = _index()
+    s = sessions.get(sid)
+    if not s:
+        return "", f"session {sid} is not alive; resume it instead"
+    pane = _session_pane(sid, reg, sessions)
+    if not pane:
+        return "", ""
+    name, cwd, pid, h = s.get("name") or sid[:8], s.get("cwd", ""), int(s.get("pid", 0) or 0), harness.of(s)
+    if not model.resumable_transcript(sid, cwd, h):
+        return "", f"{harness.LABEL[h]} has not written this session's transcript yet; send it a prompt first"
+    if not tmux.hold(pane, h):
+        return "", "could not keep the session's pane open; not restarting"
+    tmux.stop(pid)
+    if not tmux.start_reserved(pane, cwd, name, sid, h):
+        return "", f"could not restart {harness.LABEL[h]} in pane {pane}; resume session {sid} manually"
+    return pane, ""
+
+
+def _restart(sid: str, json_output: bool = False, view_id: str = "") -> int:
+    pane, err = restart(sid)
+    if err:
+        print(err, file=sys.stderr)
+        return 1
+    if not pane:
+        return _adopt(sid, json_output, view_id)
+    s = {x["sessionId"]: x for x in model.load_sessions()}.get(sid, {})
+    return _emit_view(pane, s.get("name") or sid[:8], s.get("cwd", ""), json_output, view_id, harness.of(s))
 
 
 def _attach(sid: str, name: str, json_output: bool = False, view_id: str = "") -> int:
@@ -190,26 +228,30 @@ def _past(directory: str) -> int:
     return 0
 
 
-def _context(sid: str) -> int:
+def _context(sid: str, opt: str = "") -> int:
     from .context import text_for
+    if opt not in ("", "--prompt-stdin"):
+        print("usage: pengupool ctl context <sid> [--prompt-stdin]", file=sys.stderr)
+        return 2
     s = next((s for s in model.load_sessions() if s["sessionId"] == sid), {})
-    print(text_for(sid, h=harness.of(s)))
+    print(text_for(sid, h=harness.of(s), prompt=sys.stdin.read() if opt else None))
     return 0
 
 
 def _describe(sid: str, opts: list[str]) -> int:
-    fields = {"--summary": None, "--responsibility": None}
+    fields = {"--summary": None, "--responsibility": None, "--keywords": None}
     while opts:
         if len(opts) < 2 or opts[0] not in fields:
-            print("usage: pengupool ctl describe <sid> [--summary S] [--responsibility R]", file=sys.stderr)
+            print("usage: pengupool ctl describe <sid> [--summary S] [--responsibility R] [--keywords \"a, b\"]",
+                  file=sys.stderr)
             return 2
         key, value, *opts = opts
         fields[key] = value
-    if fields == {"--summary": None, "--responsibility": None}:
-        print("nothing to set: pass --summary and/or --responsibility", file=sys.stderr)
+    if all(v is None for v in fields.values()):
+        print("nothing to set: pass --summary, --responsibility and/or --keywords", file=sys.stderr)
         return 2
     try:
-        d = profiles.describe(sid, fields["--summary"], fields["--responsibility"])
+        d = profiles.describe(sid, fields["--summary"], fields["--responsibility"], keywords_text=fields["--keywords"])
     except (ValueError, PermissionError) as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -260,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     if json_output:
         argv.pop(0)
     if not argv:
-        print("usage: pengupool ctl new|resume|adopt|attach|close|group|worktree-add|past|context|describe|profile|tree|route|authorize …", file=sys.stderr)
+        print("usage: pengupool ctl new|resume|restart|adopt|attach|close|group|worktree-add|past|context|describe|profile|tree|route|authorize …", file=sys.stderr)
         return 2
     verb, a = argv[0], argv[1:]
     if verb == "describe" and a:
@@ -272,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
         ("new", 5): lambda: _new(a[0], a[1], json_output, a[2], a[3], a[4]),
         ("resume", 3): lambda: _resume(a[0], a[1], a[2], json_output),
         ("resume", 4): lambda: _resume(a[0], a[1], a[2], json_output, a[3]),
+        ("restart", 1): lambda: _restart(a[0], json_output),
+        ("restart", 2): lambda: _restart(a[0], json_output, a[1]),
         ("adopt", 1): lambda: _adopt(a[0], json_output),
         ("adopt", 2): lambda: _adopt(a[0], json_output, a[1]),
         ("attach", 2): lambda: _attach(a[0], a[1], json_output),
@@ -282,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         ("worktree-add", 2): lambda: _worktree_add(a[0], a[1]),
         ("past", 1): lambda: _past(a[0]),
         ("context", 1): lambda: _context(a[0]),
+        ("context", 2): lambda: _context(a[0], a[1]),
         ("register", 2): lambda: (profiles.register(a[0], a[1]), 0)[1],
         ("profile", 1): lambda: _profile(a[0]),
         ("tree", 1): lambda: _tree(a[0]),

@@ -11,9 +11,11 @@ export function localLogTime(value: string): string {
     `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
 }
 
-/** `[ts, src, dst, label, incoming, rel]` — `rel` is 'down' (parent→child), 'up' (child→parent)
- *  or '' (siblings/unrelated), used to color the log arrow green vs orange. */
-type LogMsg = [string, string, string, string, boolean, 'down' | 'up' | ''];
+/** `[ts, src, dst, label, incoming, rel]` — `rel` is 'down' (direct parent→child, green), 'up'
+ *  (direct child→parent, milky blue), 'tagged' (any other pair in the tree, which the routing guard
+ *  allows only when the user @-tagged the session; orange) or '' (an end outside the tree). */
+type Rel = 'down' | 'up' | 'tagged' | '';
+type LogMsg = [string, string, string, string, boolean, Rel];
 
 /** name -> set of ancestor names within the tree, for arrow-direction coloring. */
 function buildAncestors(roots: SessionNode[]): Map<string, Set<string>> {
@@ -26,13 +28,15 @@ function buildAncestors(roots: SessionNode[]): Map<string, Set<string>> {
   return anc;
 }
 
-/** 'down' when src is an ancestor of dst (parent → child), 'up' when dst is an ancestor of
- *  src (child → parent, a reply), else '' (siblings / unrelated). */
-function relation(src: string, dst: string, anc: Map<string, Set<string>>): 'down' | 'up' | '' {
+/** 'down' when src is dst's parent, 'up' when dst is src's parent (a reply), 'tagged' for any
+ *  other pair in the tree, '' when either end is outside it. */
+function relation(src: string, dst: string, anc: Map<string, Set<string>>): Rel {
   const s = anc.get(src), d = anc.get(dst);
-  if (s && d && s.has(dst)) { return 'up'; }    // dst is an ancestor of src → child → parent
-  if (s && d && d.has(src)) { return 'down'; }  // src is an ancestor of dst → parent → child
-  return '';
+  if (!s || !d) { return ''; }
+  const parentOf = (a: Set<string>, b: Set<string>, name: string) => b.size === a.size + 1 && b.has(name) && [...a].every((x) => b.has(x));
+  if (parentOf(s, d, src)) { return 'down'; }  // dst's ancestors = src's + src → src is dst's parent
+  if (parentOf(d, s, dst)) { return 'up'; }    // src's ancestors = dst's + dst → dst is src's parent
+  return 'tagged';
 }
 
 function messages(snap: Snapshot): LogMsg[] {
@@ -45,7 +49,8 @@ function messages(snap: Snapshot): LogMsg[] {
 /** Live message log as an editor-area webview (floatable/tileable like the map). Shows
  *  `src ⇢ dst: label` per cross-session message, newest last, appended live. Each row shows a
  *  one-line preview and **expands to the full message on click** (state kept across refreshes).
- *  The `src ⇢ dst` arrow is colored by direction: green for parent→child, orange for child→parent. */
+ *  The `src ⇢ dst` arrow is colored by edge: green parent→child, milky blue child→parent, orange for a
+ *  message the user allowed by @-tagging a session. */
 export class LogPanel {
   private static current?: LogPanel;
   private readonly panel: vscode.WebviewPanel;
@@ -122,8 +127,8 @@ export class LogPanel {
   .row.open .msg { white-space:pre-wrap; overflow:visible; }
   .hint { flex:0 0 auto; color: var(--vscode-descriptionForeground); }
   .row.open .hint { color: var(--vscode-foreground); }
-  .who { color:#3fb950; } .who.o { color:#d29922; } .who.n { color: var(--vscode-descriptionForeground); }
-  .g { color:#3fb950; } .o { color:#d29922; }
+  .who { color:#3fb950; } .who.b { color:#9ecbff; } .who.o { color:#f0883e; } .who.n { color: var(--vscode-descriptionForeground); }
+  .g { color:#3fb950; } .b { color:#9ecbff; } .o { color:#f0883e; }
   .legend { position:sticky; top:-8px; z-index:1; margin:-8px -8px 6px; padding:6px 8px;
             border-bottom:1px solid var(--vscode-panel-border); background:var(--vscode-editor-background);
             color:var(--vscode-descriptionForeground); }
@@ -132,7 +137,7 @@ export class LogPanel {
   ${HARNESS_TABS_CSS}
   .legend #tabs { margin:-6px -8px 6px; }
 </style></head><body>
-<div class="legend">${HARNESS_TABS_HTML}<span class="g">parent → child</span><span class="o">child → parent</span></div>
+<div class="legend">${HARNESS_TABS_HTML}<span class="g">parent → child</span><span class="b">child → parent</span><span class="o">@session (user-tagged)</span></div>
 <div id="empty">no messages yet</div><div id="log"></div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -153,7 +158,7 @@ export class LogPanel {
     const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     log.innerHTML = msgs.map(m => {
       const [ts, src, dst, label, incoming, rel] = m;
-      const cls = rel === 'down' ? '' : rel === 'up' ? 'o' : 'n';
+      const cls = rel === 'down' ? '' : rel === 'up' ? 'b' : rel === 'tagged' ? 'o' : 'n';
       const k = ts+'|'+src+'|'+dst+'|'+label;
       const isOpen = open.has(k);
       return '<div class="row'+(isOpen?' open':'')+'" data-k="'+escA(k)+'" title="Click to expand / collapse">'

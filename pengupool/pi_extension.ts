@@ -6,7 +6,8 @@
 //  - ~/.pengupool/context/<sid>.json       % of the context window in use, like Claude's status line
 //  - ~/.pengupool/profiles/<sid>.json       workspace profile, via `pengupool ctl register` at start
 //  - before each prompt, `pengupool ctl context <sid>` is appended to the system prompt: where this
-//    session sits in its PenguPool tree and who it may message with pi-intercom
+//    session sits in its PenguPool tree and who it may message with pi-intercom (plus any session the
+//    user @-tagged in that prompt)
 //  - every intercom send/ask goes through `pengupool ctl authorize` first; a non-adjacent target, or
 //    PenguPool failing to answer, blocks it (the same rule Claude's SendMessage guard applies)
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
@@ -18,9 +19,11 @@ import * as path from "node:path"
 const HOME = process.env.PENGUPOOL_HOME || path.join(os.homedir(), ".pengupool")
 const LIVE = path.join(HOME, "pi-sessions", `${process.pid}.json`)
 const CLI = process.env.PENGUPOOL_CLI || "pengupool"
-const run = (args: string[]) => new Promise<{ code: number; out: string; err: string }>((resolve) =>
-  execFile(CLI, args, { timeout: 3000 }, (e: any, out, err) =>
-    resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(out).trim(), err: String(err).trim() })))
+const run = (args: string[], input = "") => new Promise<{ code: number; out: string; err: string }>((resolve) => {
+  const child = execFile(CLI, args, { timeout: 3000 }, (e: any, out, err) =>
+    resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(out).trim(), err: String(err).trim() }))
+  child.stdin?.end(input)
+})
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -81,7 +84,8 @@ export default function (pi: ExtensionAPI) {
   })
   pi.on("before_agent_start", async (event) => {
     if (!live.sessionId) return
-    const r = await run(["ctl", "context", String(live.sessionId)])
+    // the user's prompt goes along: its @session tags lift the adjacent rule for those sessions
+    const r = await run(["ctl", "context", String(live.sessionId), "--prompt-stdin"], String(event.prompt || ""))
     if (!r.code && r.out) return { systemPrompt: `${event.systemPrompt}\n\n${r.out}` }
   })
   pi.on("tool_call", async (event: any) => {

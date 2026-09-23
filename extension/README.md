@@ -12,7 +12,15 @@ with the extension installed in the remote extension host. The backend needs Pyt
 include the Python CLI, tmux, or either agent harness. Install those in the environment where the
 workspace and extension host run.
 
-1. Install this extension from the Marketplace or a VSIX.
+**One command** installs the backend and this extension together, in every VS Code and Cursor found:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash
+```
+
+Or step by step:
+
+1. Install this extension from the Marketplace or a VSIX (each GitHub release attaches `pengupool.vsix`).
 2. Install and configure the backend from the [PenguPool repository](https://github.com/nduwork/pengutool):
 
    ```sh
@@ -52,7 +60,9 @@ A session needs a saved transcript to resume, so send a prompt in a brand-new ou
 let it finish before adopting it. PenguPool leaves the outside process running if the transcript or
 destination tmux pane is not ready.
 The sidebar help repeats the Map and Log toolbar icons so the controls are easy to locate. The Log
-legend identifies green messages as received and amber messages as sent.
+legend colors each message by its edge: green parent → child, milky blue child → parent, and orange for
+a message between sessions that are not parent and child, which is only possible when you tagged the
+session with `@session` in your prompt.
 
 The sidebar and editor webviews use VS Code theme colors, and sidebar/panel **resize,
 click-to-select, and zoom all work**. They do not go through xterm.js mouse reporting, which breaks border-drag resize
@@ -70,13 +80,14 @@ pengupool serve   ──NDJSON──▶  ServeClient  ──▶  SessionsView (w
 - **`pengupool serve`** (in `pengupool/serve.py`) emits one JSON snapshot per poll tick. Idle ticks
   are skipped; each snapshot carries a `topo_hash` covering **structure only**.
 - The map webview **relayouts only when `topo_hash` changes** and otherwise restyles nodes in place,
-  so the ~1 Hz refresh never makes the graph jump. Nodes route through the same session-switch
+  so the ~1 Hz refresh never makes the graph jump. Cards are sized from the rendered text, and
+  **⟳ Refresh** redraws the map on demand. Nodes route through the same session-switch
   command as the sidebar.
 
 Sessions are hosted on the shared `tmux -L pengupool`
-server (compatible with the TUI). The extension opens one transient **PenguPool** terminal backed
+server. The extension opens one transient **PenguPool** terminal backed
 directly by a grouped tmux client. Selecting a session switches that client to the session's window,
-just like the TUI work pane, without restarting Claude or opening another terminal. A live session
+without restarting Claude or opening another terminal. A live session
 outside the server is taken over via `ctl adopt` (stop → resume, no fork), and past sessions resume
 via "Add previous". Operations, command-palette quick-switch, and the map/log webviews are wired through
 `pengupool serve` + `pengupool ctl`.
@@ -93,6 +104,9 @@ window reload; PenguPool creates a fresh client when its Activity Bar view is re
 Log timestamps use the machine's local timezone and the compact `MM/DD/YYYY-HH:mm:ss` format.
 In the PenguPool Claude terminal, Shift+Enter sends Claude's multiline sequence while Enter submits. To
 copy terminal text on selection, enable VS Code's `terminal.integrated.copyOnSelection` setting.
+`Shift+R` (or right-click → Restart & Resume) stops a session and resumes it in the same terminal, so a
+Claude Code or pi update takes effect without losing the session or its group.
+
 Grouping is session-based: use `c` or `/compact` to stay grouped. Do not use `/new` or `/clear`,
 because either command starts a new session and removes it from the current group.
 
@@ -131,4 +145,4 @@ make ext-package     # builds a VSIX in the system temporary directory
 Requires the `pengupool` CLI on PATH (`make install`), or set `pengupool.command` to its path.
 The extension uses `pengupool ctl --json` for launch metadata. Update the Python backend and
 extension together with `make install-all`. Adding an already-live session switches to it or
-offers adoption, without starting a duplicate. TUI cleanup preserves the extension view.
+offers adoption, without starting a duplicate.

@@ -66,15 +66,6 @@ def test_new_metadata_uses_actual_worktree(monkeypatch, capsys):
     assert result == {"command": "VIEW %9", "pane": "%9", "cwd": "/repo-wt-worker", "harness": "cc"}
 
 
-def test_tui_cleanup_preserves_extension_views(monkeypatch):
-    listing = {"cc": "pengupool\npv-ext-0\npv-worker\npv-tui-pengupool\n", "pi": "pengupool\npv-ext-1\npv-tui-pengupool\n"}
-    monkeypatch.setattr(tmux, "_run", lambda *args, h: listing[h])
-    killed = []
-    monkeypatch.setattr(tmux, "_ok", lambda *args, h: killed.append((args, h)) or True)
-    tmux.kill_views()  # every harness server, TUI views only
-    assert killed == [(("kill-session", "-t", "=pv-tui-pengupool"), "cc"), (("kill-session", "-t", "=pv-tui-pengupool"), "pi")]
-
-
 def test_adopt_reuses_hosted_session(external_session, monkeypatch, capsys):
     monkeypatch.setattr(tmux, "pane_owns", lambda pane, pid, h="cc": True)
     monkeypatch.setattr(tmux, "stop", lambda *args, **k: pytest.fail("stopped hosted session"))
@@ -139,16 +130,6 @@ def test_select_view_restores_automatic_window_sizing(monkeypatch):
         ("set-option", "-w", "-t", "pv-ext-editor-1:@9", "window-size", "latest"),
         ("select-window", "-t", "pv-ext-editor-1:@9"),
         ("switch-client", "-c", "/dev/ttys052", "-t", "=pv-ext-editor-1"),
-    ]
-
-
-def test_fit_window_keeps_shared_window_automatic(monkeypatch):
-    calls = []
-    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)
-
-    tmux.fit_window("/dev/ttys001", "pv-tui-pengupool:2")
-    assert calls == [
-        ("set-option", "-w", "-t", "pv-tui-pengupool:2", "window-size", "latest"),
     ]
 
 

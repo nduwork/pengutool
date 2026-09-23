@@ -1,40 +1,49 @@
 # PenguPool
 
-**See your agent sessions in one place.** PenguPool is a local terminal UI and VS Code/Cursor extension for managing Claude Code and pi sessions. It shows the session tree, live work panes, a map of who is talking to whom, and recent messages. Sessions run in tmux and remain available when you leave the UI.
+**See your agent sessions in one place.** PenguPool is a VS Code/Cursor extension, backed by a local Python CLI, for managing Claude Code and pi sessions. It shows the session tree, a live map of who is talking to whom, recent messages, and a tmux-backed terminal per harness. Sessions run in tmux and keep running when you close the editor.
 
 [Landing page](docs/index.html) · [VS Code extension](extension/README.md) · [Contributing](.github/CONTRIBUTING.md) · [MIT license](LICENSE)
 
 ## Install
 
-Requires macOS or Linux, Python 3.11+, [uv](https://docs.astral.sh/uv/), Make, tmux 3.2+, and Claude Code and/or [pi](https://pi.dev). The installer checks for missing agent tools. Building the editor extension also requires Node.js/npm and VS Code or Cursor.
+One command installs the latest release: the `pengupool` CLI, the wiring for every installed harness (Claude Code, pi), the workflow tracker, and the extension in every VS Code and Cursor it finds.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash
+```
+
+It needs Python 3.11+ and Make, installs [uv](https://docs.astral.sh/uv/) if missing, and offers tmux 3.2+ and the agent CLIs (y/N each). `PENGUPOOL_REF=vX.Y.Z` pins a release; `HARNESS=cc|pi|both` and `EDITOR_CLI=code|cursor` override detection. From a checkout, `bash install.sh` installs that tree.
+
+From a checkout, Make covers the same steps:
 
 ```sh
 git clone https://github.com/nduwork/pengutool.git
 cd pengutool
-make install
-pengupool
+make install        # CLI, harness wiring, tracker (HARNESS=auto|cc|pi|both)
+make ext-deps       # once, to build the extension (needs Node.js/npm)
+make install-all    # backend + extension (EDITOR_CLI=code|cursor to choose)
 ```
 
-For the editor extension, run `make ext-deps` once, then `make install-all`. Use `EDITOR_CLI=code` or `EDITOR_CLI=cursor` to select an editor. The published extension still needs the local `pengupool` backend. To remove everything, run `make uninstall-all`. Session transcripts, worktrees, and saved grouping data are retained.
-
-`make install HARNESS=cc`, `HARNESS=pi`, or `HARNESS=both` selects the agent integration. With no selection, installed harnesses are detected automatically. Run `make check-install` to inspect prerequisites and wiring.
+`make check-install` reports what is missing. `make uninstall-all` removes the extension, hooks, tracker and CLI; session transcripts, worktrees and saved grouping data are kept. Reload the editor window after installing or updating.
 
 ## Use
 
-The left pane lists sessions. The right side shows the session map and message log above a live tmux work pane. The editor extension reads the same local model and can show the same sessions.
+Open the PenguPool view (penguin icon in the Activity Bar). The Sessions tree lists Claude Code sessions, and a pi Sessions tree appears when pi is installed. Select a session to show it in the PenguPool terminal; the Map and Log panels show the selected tree.
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓`, `Enter` | Select and open a session |
-| `n`, `a` | Start a session or add a previous one |
-| `g`, `d`, `r` | Group, describe, or rename a session |
-| `c`, `x` | Compact or close a session |
-| `m`, `l`, `h` | Toggle map/log or switch harness view |
-| `Ctrl+T`, `q` | Switch between list and work pane, or quit |
+| `Enter` / click | Open a session in the terminal |
+| `n`, `a` | Start a session (worktree or current folder) or add a previous one |
+| `g` / drag | Group under another session |
+| `r`, `x`, `c` | Rename, close, or compact a session |
+| `Shift+R` | Restart & resume, e.g. after a Claude Code or pi update |
+| right-click | All session actions, including Describe Role |
 
-New sessions can use their own git worktree. Grouped sessions receive brief context about their position and role. For managed sessions, messages to another PenguPool session are limited to the sender's parent or direct children. Claude Code uses a `PreToolUse` guard; pi uses the bundled extension and pi-intercom.
+Grouped sessions receive a short `<pengupool>` block with their tree, parent, children and role. Routing is enforced: a grouped session may message only its parent or direct children (Claude Code through a `PreToolUse` guard, pi through the bundled extension and pi-intercom), and `pengupool ctl route <id> <target>` names the next hop. Tag a session in your prompt (`@reviewer …`) to let the session you typed into message it directly until your next prompt.
 
-PenguPool reads local Claude Code and pi session files and keeps its own state under `~/.pengupool/`. It does not need a cloud account or hosted service. The optional [workflow tracker](workflow-tracker/SKILL.md) is bundled and installed by `make install`; it shows each session's current work phase.
+Triage is checked by code. When a prompt matches a child's routing keywords (`pengupool ctl describe <id> --keywords "lexer, parser"`), name, workspace or role, the session is told `ROUTE REQUIRED` and must message that child first; the Stop hook sends it back once if it did not. A session with no role is told `ROLE REQUIRED`. Each grouped reply starts with a `Triage:` line, and "do it yourself" in a prompt turns the check off for that prompt.
+
+PenguPool reads local Claude Code and pi session files and keeps its own state under `~/.pengupool/`. It does not need a cloud account or hosted service. The bundled [workflow tracker](workflow-tracker/SKILL.md) shows each session's current work phase under its map card.
 
 ## Develop
 
@@ -44,10 +53,12 @@ uv run pytest -q
 cd extension && npm ci && npm test && npm run compile
 ```
 
-`pengupool serve --once` emits one JSON snapshot for integrations. `pengupool ctl --help` lists control commands. To propose a change, use a fork and pull request; see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+`pengupool` with no arguments lists the commands. `pengupool serve` streams NDJSON snapshots for the extension (`--once` prints one). `pengupool ctl` lists the control verbs the editor and pi extensions call. To propose a change, use a fork and pull request; see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
-Each successful CI run offers a downloadable build artifact containing the Python wheel, source archive, and editor VSIX. Version tags trigger the GitHub Actions release workflow, which attaches those builds to a GitHub Release. Build outputs stay in the CI runner's temporary directory, not in the repository.
+## Releasing
+
+A release is a tag. `scripts/release.sh` bumps `pyproject.toml` from conventional commits, promotes `## [Unreleased]` in `CHANGELOG.md`, tags `vX.Y.Z` and pushes; the release workflow then tests, builds the wheel and `pengupool.vsix`, and publishes the GitHub Release. One tag ships a matching backend and extension: the tag is the backend version, and the extension's own version moves only when `extension/` changed. `scripts/release-status.sh` shows what has landed and whether a release is warranted; docs/chore-only changes do not need one.
 
 ## Limits
 
-PenguPool currently supports macOS/Linux and requires tmux. Adopting a running session from outside PenguPool stops that process and resumes it from its transcript, so wait for the current turn to finish. Context percentages appear only when the agent reports them. The message guard applies to supported agent messaging tools, not every possible external communication channel.
+PenguPool supports macOS/Linux and requires tmux. Adopting a running session from outside PenguPool stops that process and resumes it from its transcript, so wait for the current turn to finish. Context percentages appear only when the agent reports them. The message guard applies to supported agent messaging tools, not every possible external communication channel. pi gets the triage directive but not the end-of-turn check yet.

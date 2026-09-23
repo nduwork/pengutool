@@ -1,4 +1,4 @@
-"""Profiles, the context block, and adjacent-level routing."""
+"""Profiles, the context block and adjacent-level routing (docs/group-session-framework.md)."""
 import json
 
 import pytest
@@ -84,6 +84,23 @@ def test_only_parent_and_children_are_reachable():
     assert not ok and "names 2 sessions" in why                 # the pi "kid" never counts for Claude
 
 
+def test_user_at_tag_lifts_the_adjacent_rule_for_that_prompt(tmp_path, monkeypatch):
+    monkeypatch.setattr(routing, "GRANTS", tmp_path / "grants")
+    t = _tree()
+    assert routing.mentions("ask @other, mail a@b.com, then @leaf.") == ["other", "leaf"]
+    assert not routing.authorize_send(D, "other", t)[0]
+    assert routing.grant(D, "@other please review", t) == ["other"]
+    assert routing.authorize_send(D, "other", t) == (True, "")
+    assert routing.authorize_send(C, "leaf", t) == (True, "")     # the tagged session may reply
+    assert not routing.authorize_send(D, "solo", t)[0]            # untagged sessions stay blocked
+    assert routing.grant(D, "carry on", t) == []                  # the next prompt ends the grant
+    assert not routing.authorize_send(D, "other", t)[0]
+    t.name[C] = "kid"                                             # "@kid" now names B and C: no grant
+    assert routing.grant(D, "@kid", t) == [] and routing.grant(D, f"@{C}", t) == ["kid"]
+    block = context.render(_sess(), B, tagged=["other"])
+    assert "The user tagged @other in this prompt" in block
+
+
 def test_route_walks_one_edge_at_a_time():
     t = _tree()
     assert routing.route(t, A, D) == B and routing.route(t, D, C) == B and routing.route(t, B, C) == A
@@ -138,6 +155,11 @@ def test_context_block_carries_roles_and_the_local_block(home, monkeypatch):
     assert f"lead #{A[:6]}  [r, active] — Owns the plan" in text and "kid #" in text and "← you" in text
     assert "Your role is not set" in text and f"ctl describe {B}" in text
     assert "Your parent: lead — Owns the plan." in text and f"ctl route {B}" in text
+    assert "inquire with your parent" in text and "never assign work upward" in text  # a leaf: asks up only
+    assert "delegate" not in text and "instead of inquiring back" in text
+    root = context.render(_sess(), A)  # work flows down; a child's inquiry is triaged, not bounced
+    assert "delegate that part" in root and "inquiry from a child" in root and "tell the user" in root
+    assert "inquire with your parent" not in root and "inquire upward" not in root  # nowhere above the root
     profiles.describe(B, "Owns parsing", None, editor=A)
     assert "last set by your parent" in context.render(_sess(), B)
 
@@ -169,3 +191,55 @@ def test_ctl_describe_parses_flags(home, monkeypatch, capsys):
     assert ctl.main(["describe", A, "--summary", "Owns the plan"]) == 0
     assert json.loads(capsys.readouterr().out)["summary"] == "Owns the plan"
     assert ctl.main(["describe", A]) == 2 and ctl.main(["describe", A, "--bogus", "x"]) == 2
+
+
+def test_code_matches_the_prompt_to_a_child_and_audits_the_route(home, monkeypatch):
+    monkeypatch.setattr(context, "ROUTES", home / "routes")
+    monkeypatch.setattr(profiles, "parent_of", lambda sid: A if sid == B else "")
+    profiles.describe(B, "Owns the parser", None, editor=B, keywords_text="lexer, token stream")
+    tree = _sess()
+    hit = context.route_match(tree, A, "Why does the Lexer drop the last token stream?")
+    assert hit == [(B, "kid", ["lexer", "token stream"])]
+    assert context.route_match(tree, A, "ask kid for the status")[0][2] == ["kid"]    # the child's name
+    assert context.route_match(tree, A, "update the plan") == []                     # nothing matches
+    assert context.route_match(tree, A, "fix the lexer, do it yourself") == []       # user opted out
+    assert context.route_match(tree, B, "fix the lexer") == []                       # no children
+    block = context.render(tree, A, route=hit)
+    assert block.startswith("<pengupool>\nROUTE REQUIRED: this request matches your child kid (matched: lexer")
+    assert "Triage: mine" in block
+
+    state = context.ROUTES / f"{A}.json"
+    model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
+    assert "routing skipped for kid" in context.audit(A, again=False)                # never messaged
+    assert context.audit(A, again=False) == ""                                       # blocks once
+    model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
+    assert context.audit(A, again=True) == ""                                        # stop_hook_active
+    model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
+    context.routed(A, B)                                                             # the guard saw the send
+    assert not state.exists() and context.audit(A, again=False) == ""
+
+
+def test_a_session_without_a_role_is_told_to_describe_itself_now(home, monkeypatch):
+    monkeypatch.setattr(context, "ROUTES", home / "routes")
+    monkeypatch.setattr(profiles, "parent_of", lambda sid: A if sid == B else "")
+    tree = _sess()
+    profiles.register(B, str(home))
+    assert context.ask_role(tree, B) == (True, False)             # grouped: every prompt, backed by the audit
+    block = context.render(tree, B, ask_role=True)
+    assert "ROLE REQUIRED" in block and f"ctl describe {B}" in block and "Once your task is clear" not in block
+    parent = context.render(tree, A)
+    assert f"Children without a role: kid (id {B})" in parent      # the parent can describe its child
+
+    state = context.ROUTES / f"{B}.json"
+    model.write_json(state, {"targets": {}, "role": True, "ts": __import__("time").time()})
+    context.routed(B, A)                                           # an unrelated send keeps the role check
+    assert "role not set" in context.audit(B, again=False)
+    model.write_json(state, {"targets": {}, "role": True, "ts": __import__("time").time()})
+    profiles.describe(B, "Owns parsing", None, editor=B)
+    assert context.audit(B, again=False) == ""                    # described during the turn: fine
+    assert context.ask_role(tree, B) == (False, False)
+    assert "Children without a role" not in context.render(_sess(**{B: {**tree["sessions"][B], "summary": "Owns parsing"}}), A)
+
+    profiles.register(C, str(home))                                # solo: asked once, then left alone
+    assert context.ask_role(tree, C) == (True, True)
+    assert context.ask_role(tree, C) == (False, False)
