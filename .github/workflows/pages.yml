@@ -30,7 +30,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The checkout is ephemeral, so this copy never gets committed: install.sh has one source of truth.
       - run: cp install.sh docs/install.sh
       - uses: actions/upload-pages-artifact@v5
