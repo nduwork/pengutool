@@ -39,6 +39,8 @@ Open the PenguPool view (penguin icon in the Activity Bar). The Sessions tree li
 | `Shift+R` | Restart & resume, e.g. after a Claude Code or pi update |
 | right-click | All session actions, including Describe Role |
 
+See the [guide](docs/guide.md) for how to brief a pool and keep work routed well.
+
 Grouped sessions receive a short `<pengupool>` block with their tree, parent, children and role. Routing is enforced: a grouped session may message only its parent or direct children (Claude Code through a `PreToolUse` guard, pi through the bundled extension and pi-intercom), and `pengupool ctl route <id> <target>` names the next hop. Tag a session in your prompt (`@reviewer …`) to let the session you typed into message it directly until your next prompt.
 
 Triage is checked by code. When a prompt matches a child's routing keywords (`pengupool ctl describe <id> --keywords "lexer, parser"`), name, workspace or role, the session is told `ROUTE REQUIRED` and must message that child first; the Stop hook sends it back once if it did not. A session with no role is told `ROLE REQUIRED`. Each grouped reply starts with a `Triage:` line, and "do it yourself" in a prompt turns the check off for that prompt.

@@ -14,6 +14,7 @@
     <a class="brand" href="#top"><span class="brand-icon"><img src="assets/penguin.svg" alt=""></span> PenguPool</a>
     <nav aria-label="Main navigation">
       <a href="#plugins">Plugins</a>
+      <a href="#guide">Guide</a>
       <a href="#how-it-works">How it works</a>
       <a href="#install">Install</a>
       <a href="https://github.com/nduwork/pengutool">GitHub ↗</a>
@@ -32,12 +33,53 @@
         </div>
         <p class="hero-note">Open source · MIT · macOS &amp; Linux · v0.1.0</p>
       </div>
-      <div class="preview" role="img" aria-label="Illustration of the PenguPool extension in an editor: session tree, live map, and terminal">
-        <div class="preview-top"><div class="dots"><i></i><i></i><i></i></div><span>PenguPool — VS Code</span><span>⇧R restart</span></div>
-        <div class="preview-body">
-          <aside class="preview-list"><div class="pane-label">SESSIONS <b>3</b></div><div class="session selected"><span class="live"></span><div>Ship the feature<small>Claude Code · active</small></div></div><div class="session nested"><span class="live"></span><div>Build the UI<small>Claude Code · active</small></div></div><div class="session nested"><span class="idle"></span><div>Review changes<small>Claude Code · waiting</small></div></div><div class="pane-label">PI SESSIONS <b>1</b></div><div class="session"><span class="live"></span><div>Draft the docs<small>pi · active</small></div></div><div class="preview-foot">+ New session · n</div></aside>
-          <div class="preview-main"><div class="map"><div class="pane-label">SESSION MAP <span>LIVE</span></div><div class="nodes"><div class="node parent">Ship the feature</div><div class="branch"></div><div class="children"><div class="node child">Build the UI</div><div class="node child">Review changes</div></div></div></div><div class="terminal"><div class="pane-label">PENGUPOOL TERMINAL <span>● CLAUDE CODE</span></div><code><span class="prompt">❯</span> Working on the session view…<br><span class="muted">  ✓ Sidebar wired to live sessions</span><br><span class="muted">  ✓ Map updated</span><br><span class="prompt">❯</span> <span class="cursor"></span></code></div></div>
+      <div class="ide" role="img" aria-label="The PenguPool extension in Cursor: the Claude Sessions and Pi Sessions trees in the sidebar, the session map and message log side by side, and the PenguPool terminal below">
+        <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop-app — Cursor</span><span></span></div>
+        <div class="ide-body">
+          <div class="ide-activity" aria-hidden="true"><span>⧉</span><span>⌕</span><span>⑂</span><span class="on"><img src="assets/penguin.svg" alt=""></span></div>
+          <div class="ide-side">
+            <div class="side-title">PENGUPOOL</div>
+            <div class="side-sec">⌄ CLAUDE SESSIONS</div>
+            <div class="row sel st-active"><span class="g">●</span><b>lead</b><em>shop-app · 38% ctx</em></div>
+            <div class="row in st-active"><span class="g">●</span><b>api</b><em>shop-app-wt-api · 51% ctx</em></div>
+            <div class="row in st-waiting"><span class="g">◷</span><b>ui</b><em>shop-app · 22% ctx</em></div>
+            <div class="row in st-blocked"><span class="g">?</span><b>reviewer</b><em>shop-app · 64% ctx</em></div>
+            <div class="side-sec">⌄ PI SESSIONS</div>
+            <div class="row st-stale"><span class="g">○</span><b>docs-writer</b><em>pi · shop-app</em></div>
+            <div class="side-sec closed">› SHORTCUTS</div>
+          </div>
+          <div class="ide-main">
+            <div class="ide-editors">
+              <div class="ide-group">
+                <div class="ide-tabs"><span class="tab on"><img src="assets/penguin.svg" alt="">PenguPool Map</span></div>
+                <div class="map-pane">
+                  <span class="refresh">⟳ Refresh</span>
+                  <svg class="edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M50 39 V49 H18 V60 M50 49 H82 V60 M50 49 V60"/></svg>
+                  <span class="elabel">token refresh</span>
+                  <div class="card lead st-active sel"><div class="st">● Active</div><div class="nm">lead</div><div class="meta">shop-app · 38%</div><div class="ch">[ship-auth] api ✓ → ui ● → review ○</div></div>
+                  <div class="card c1 st-active"><div class="st">● Active</div><div class="nm">api</div><div class="meta">shop-app-wt-api · 51%</div></div>
+                  <div class="card c2 st-waiting"><div class="st">◷ Waiting</div><div class="nm">ui</div><div class="meta">shop-app · 22%</div></div>
+                  <div class="card c3 st-blocked"><div class="st">? Approval</div><div class="nm">reviewer</div><div class="meta">shop-app · 64%</div></div>
+                </div>
+              </div>
+              <div class="ide-group log">
+                <div class="ide-tabs"><span class="tab on"><img src="assets/penguin.svg" alt="">PenguPool Log</span></div>
+                <div class="log-pane">
+                  <div class="legend"><span class="lg">parent → child</span><span class="lb">child → parent</span><span class="lo">@session</span></div>
+                  <div class="lrow"><i>09/23/2026-14:02:11</i><span><b class="lg">lead ⇢ api</b>: add the token refresh endpoint</span></div>
+                  <div class="lrow"><i>09/23/2026-14:02:12</i><span><b class="lg">lead ⇢ ui</b>: wire refresh into the login form</span></div>
+                  <div class="lrow"><i>09/23/2026-14:06:40</i><span><b class="lb">api ⇢ lead</b>: endpoint done, tests pass</span></div>
+                  <div class="lrow"><i>09/23/2026-14:07:05</i><span><b class="lo">ui ⇢ reviewer</b>: can you check the form diff?</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="ide-panel">
+              <div class="panel-tabs"><span>PROBLEMS</span><span>OUTPUT</span><span class="on">TERMINAL</span><span class="term-name">⌨ PenguPool</span></div>
+              <div class="term"><div><span class="you">&gt;</span> Add token refresh to login. api owns the endpoint, ui the form.</div><div><span class="dot">⏺</span> Triage: → api, ui</div><div class="dim">  ⎿ SendMessage api · SendMessage ui</div><div><span class="dot">⏺</span> Both are on it. I'll review once they report back.</div><div class="box"><span class="you">&gt;</span> <span class="cursor"></span></div></div>
+            </div>
+          </div>
         </div>
+        <div class="ide-status"><span>⎇ main</span><span>[ship-auth] api ✓ → ui ● → review ○</span></div>
       </div>
     </section>
 
@@ -50,6 +92,19 @@
         <article><div class="feature-icon">⚓</div><h3>Claude Code hooks</h3><ul><li>A <code>&lt;pengupool&gt;</code> block each prompt: tree, parent, children, role</li><li><code>SendMessage</code> guard: parent and direct children only</li><li><code>ROUTE REQUIRED</code> when a prompt matches a child's keywords, checked again at Stop</li><li><code>ROLE REQUIRED</code> until the session describes itself</li></ul></article>
         <article><div class="feature-icon">π</div><h3>pi extension</h3><ul><li>The same tree block, appended to pi's system prompt</li><li>pi-intercom <code>send</code>/<code>ask</code> checked against the routing rule</li><li>Workflow chain in pi's footer and prompt</li><li>Its own tmux server; never grouped with Claude Code sessions</li></ul></article>
       </div>
+    </section>
+
+    <section class="features wrap" id="guide">
+      <div class="section-intro"><span class="eyebrow">WORKING WITH A POOL</span><h2>Brief the tree, then let it route.</h2><p>PenguPool enforces the tree, but the agents only know what you tell them. These habits keep work flowing to the session that owns it.</p></div>
+      <div class="feature-grid guide-grid">
+        <article><span class="step">1</span><h3>Tell the parent about every new child</h3><p>After you add and group a session, tell its parent it exists and how you plan to use it. Then give the child its job.</p><pre class="snip">I added api under you. It owns the REST endpoints in server/. Route API work to it and keep planning and review yourself.</pre></article>
+        <article><span class="step">2</span><h3>Give every session a role and keywords</h3><p>Keywords decide when a parent is told <code>ROUTE REQUIRED</code>. A session with no role is told <code>ROLE REQUIRED</code> until it sets one.</p><pre class="snip">pengupool ctl describe &lt;id&gt; --summary "REST API" --keywords "api, endpoint, auth"</pre></article>
+        <article><span class="step">3</span><h3>Talk to the top, let triage route</h3><p>Prompt the root session and read the <code>Triage:</code> line that starts each reply. To keep one task local, say so.</p><pre class="snip">Fix the login copy typo. Do it yourself.</pre></article>
+        <article><span class="step">4</span><h3>Use @session for a one-off direct line</h3><p>Tagging a session lets the one you typed into message it directly until your next prompt, without regrouping anything.</p><pre class="snip">@reviewer check the diff in api before I merge.</pre></article>
+        <article><span class="step">5</span><h3>Pick folder or worktree on purpose</h3><p>Use the same folder for reviewers, readers or a second pair of hands, even when a session already runs there. Use a worktree when two sessions edit the same files.</p></article>
+        <article><span class="step">6</span><h3>Keep the tree intact</h3><p>Compact with <kbd>c</kbd> or <code>/compact</code>. <code>/new</code> and <code>/clear</code> start a new session, which leaves the group. After a Claude Code or pi update, press <kbd>Shift</kbd>+<kbd>R</kbd> to restart in place.</p></article>
+      </div>
+      <a class="more" href="https://github.com/nduwork/pengutool/blob/main/docs/guide.md">Read the full guide →</a>
     </section>
 
     <section class="features wrap" id="how-it-works">

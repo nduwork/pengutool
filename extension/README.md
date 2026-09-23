@@ -109,6 +109,8 @@ Claude Code or pi update takes effect without losing the session or its group.
 
 Grouping is session-based: use `c` or `/compact` to stay grouped. Do not use `/new` or `/clear`,
 because either command starts a new session and removes it from the current group.
+See the [guide](https://github.com/nduwork/pengutool/blob/main/docs/guide.md) for how to brief a new child and
+keep work routed.
 
 ## Install, update, and remove
 
