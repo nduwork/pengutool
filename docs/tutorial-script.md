@@ -89,7 +89,7 @@ checks it, all from one Cursor window.
 | | |
 | --- | --- |
 | **Shot** | Sidebar. |
-| **Action** | Right-click `api` → **Restart & Resume (Shift+R)**. A "restarting api…" notification; the card blinks and comes back ● Active in the same terminal, same group. Then press `c` on `lead` to compact. The chain completes: `api ✓ → ui ✓ → review ✓`. |
+| **Action** | Right-click `api` → **Restart & Resume (Shift+R)**. A "restarting api…" notification; the card blinks and comes back ● Active in the same terminal, same group. Then `lead`'s context badge turns red (71%): press `c` on it to compact, and it drops back to green (9%). The chain completes: `api ✓ → ui ✓ → review ✓`. |
 | **Caption** | Restart in place after an update. Compact with c, never /new or /clear. |
 | **Live demo** | End on the finished chain and the full tree. |
 

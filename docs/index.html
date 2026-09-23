@@ -121,9 +121,11 @@
   <script>
     document.getElementById('copy').addEventListener('click', function () {
       var b = this;
-      navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function () {
-        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
-      });
+      var cmd = document.getElementById('cmd');
+      var done = function (label) { b.textContent = label; setTimeout(function () { b.textContent = 'Copy'; }, 1800); };
+      var select = function () { getSelection().selectAllChildren(cmd); done('Press ⌘C'); };  // clipboard blocked
+      if (!navigator.clipboard) { select(); return; }
+      navigator.clipboard.writeText(cmd.textContent).then(function () { done('Copied'); }, select);
     });
   </script>
   <script src="tutorial.js" defer></script>
