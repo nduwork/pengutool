@@ -70,4 +70,4 @@ git add pyproject.toml uv.lock CHANGELOG.md
 git commit -q -m "chore: release $next"
 git tag -a "v$next" -m "v$next"
 git push -q origin main "v$next"
-echo "released v$next → https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/v$next (workflow publishes the wheel + notes)"
+echo "released v$next → https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/v$next (workflow publishes the wheel, source archive, VSIX, and notes)"

@@ -15,7 +15,7 @@ UV_INSTALL_FLAGS ?= --refresh --exclude-newer "3 days"
 PENGUPOOL ?= pengupool
 EDITOR_CLI ?=
 EDITOR_RUN = EDITOR_CLI="$(EDITOR_CLI)" python3 scripts/editor_cli.py
-VSIX := $(abspath $(EXT)/pengupool-local.vsix)
+VSIX ?= $(or $(TMPDIR),/tmp)/pengupool-local.vsix
 
 .PHONY: install uninstall check-install install-all uninstall-all install-hooks uninstall-hooks install-tracker uninstall-tracker selfcheck ext-deps ext-compile ext-package ext-install ext-uninstall
 
@@ -86,8 +86,10 @@ ext-package: ext-compile
 
 ext-install:
 	$(EDITOR_RUN) --check
-	$(MAKE) ext-package
-	$(EDITOR_RUN) --install-extension "$(VSIX)" --force
+	@tmpdir=$$(mktemp -d); \
+	  trap 'rm -f "$$tmpdir/pengupool-local.vsix"; rmdir "$$tmpdir"' EXIT; \
+	  $(MAKE) ext-package VSIX="$$tmpdir/pengupool-local.vsix" && \
+	  $(EDITOR_RUN) --install-extension "$$tmpdir/pengupool-local.vsix" --force
 	@echo "Reload the editor window to activate the updated extension and backend."
 
 ext-uninstall:

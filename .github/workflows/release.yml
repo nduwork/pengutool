@@ -1,7 +1,4 @@
 name: release
-# A release IS a tag. `scripts/release.sh` (or the /release skill) bumps the version, updates
-# CHANGELOG.md, tags vX.Y.Z and pushes; this job then tests, builds the wheel and publishes the
-# GitHub Release with the changelog section as notes. Nothing is tagged from CI.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
@@ -20,19 +17,31 @@ jobs:
       - run: uv sync --group dev
       - name: Never publish a red tag
         run: uv run pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: npm ci
+        working-directory: extension
+      - run: npm test
+        working-directory: extension
       - name: Version must match the tag
         run: |
           set -euo pipefail
           v=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')
           [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "pyproject version $v != tag ${GITHUB_REF_NAME}"; exit 1; }
-      - run: uv build
+      - run: uv build --out-dir "$RUNNER_TEMP/pengupool-dist"
+      - run: npm run package -- --out "$RUNNER_TEMP/pengupool.vsix"
+        working-directory: extension
       - name: Release notes from CHANGELOG.md
         run: |
           set -euo pipefail
           v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '/^## \[/{p = index($0, "## [" v "]") == 1} p' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "Release ${GITHUB_REF_NAME}" > notes.md
-          { echo; echo "Install: clone https://github.com/${GITHUB_REPOSITORY}, check out ${GITHUB_REF_NAME}, then run \`make install\` (or \`make ext-deps install-all\` for Cursor)."; } >> notes.md
+          notes="$RUNNER_TEMP/release-notes.md"
+          awk -v v="$v" '/^## \[/{p = index($0, "## [" v "]") == 1} p' CHANGELOG.md > "$notes"
+          [ -s "$notes" ] || echo "Release ${GITHUB_REF_NAME}" > "$notes"
+          { echo; echo "Install: clone https://github.com/${GITHUB_REPOSITORY}, check out ${GITHUB_REF_NAME}, then run \`make install\` (or \`make ext-deps install-all\` for Cursor)."; } >> "$notes"
       - name: Publish
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --notes-file notes.md --latest
+        run: gh release create "${GITHUB_REF_NAME}" "$RUNNER_TEMP/pengupool-dist/"* "$RUNNER_TEMP/pengupool.vsix" --title "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md" --latest

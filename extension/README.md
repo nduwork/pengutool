@@ -125,7 +125,7 @@ From the repository root:
 ```sh
 make ext-deps
 make ext-compile      # then press F5 in VS Code for an Extension Development Host
-make ext-package     # builds extension/pengupool-local.vsix
+make ext-package     # builds a VSIX in the system temporary directory
 ```
 
 Requires the `pengupool` CLI on PATH (`make install`), or set `pengupool.command` to its path.

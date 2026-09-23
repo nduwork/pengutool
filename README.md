@@ -46,6 +46,8 @@ cd extension && npm ci && npm test && npm run compile
 
 `pengupool serve --once` emits one JSON snapshot for integrations. `pengupool ctl --help` lists control commands. To propose a change, use a fork and pull request; see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
+Version tags trigger the GitHub Actions release workflow. It builds and attaches the Python wheel, source archive, and editor VSIX to the GitHub Release. Build outputs are kept in the CI runner's temporary directory, not in the repository.
+
 ## Limits
 
 PenguPool currently supports macOS/Linux and requires tmux. Adopting a running session from outside PenguPool stops that process and resumes it from its transcript, so wait for the current turn to finish. Context percentages appear only when the agent reports them. The message guard applies to supported agent messaging tools, not every possible external communication channel.

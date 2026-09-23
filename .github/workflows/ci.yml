@@ -15,7 +15,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --group dev
       - run: uv run pytest -q
-      - run: uv build
+      - run: uv build --out-dir "$RUNNER_TEMP/pengupool-dist"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,5 +27,5 @@ jobs:
         working-directory: extension
       - run: npm run compile
         working-directory: extension
-      - run: npm run package -- --out /tmp/pengupool-ci.vsix
+      - run: npm run package -- --out "$RUNNER_TEMP/pengupool-ci.vsix"
         working-directory: extension
