@@ -243,3 +243,46 @@ def test_a_session_without_a_role_is_told_to_describe_itself_now(home, monkeypat
     profiles.register(C, str(home))                                # solo: asked once, then left alone
     assert context.ask_role(tree, C) == (True, True)
     assert context.ask_role(tree, C) == (False, False)
+
+
+def test_a_send_that_names_no_session_is_refused_for_a_grouped_sender():
+    t = _tree()
+    ok, why = routing.authorize_send(B, "", t)  # pi-intercom send by cwd: no `to`
+    assert not ok and "name the session" in why and "lead" in why
+    assert routing.authorize_send(E, "", t) == (True, "")  # an ungrouped sender is unmanaged
+
+
+def test_only_the_pi_extension_key_turns_tags_into_grants(tmp_path, monkeypatch, capsys):
+    import io
+    import os
+    import sys
+    monkeypatch.setattr(routing, "KEYS", tmp_path / "keys")
+    monkeypatch.setattr(model, "load_sessions", lambda: [])
+    seen = []
+    monkeypatch.setattr(context, "text_for", lambda sid, h="cc", prompt=None, grant=True: seen.append(grant) or "")
+    key = "k" * 48
+    monkeypatch.setattr(model, "pid_alive", lambda *a, **k: True)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(key + "\n"))
+    assert ctl.main(["register", B, "/repo", "--key-stdin"]) == 0
+    # an agent piping "@other" through the old flag, or with a wrong key, gets no grant
+    monkeypatch.setattr(sys, "stdin", io.StringIO("@other"))
+    ctl.main(["context", B, "--prompt-stdin"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO("wrong" * 10 + "\n@other"))
+    ctl.main(["context", B, "--keyed-prompt-stdin"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(key + "\n@other"))
+    ctl.main(["context", B, "--keyed-prompt-stdin"])
+    assert seen == [False, False, True]
+    # while the holder lives, nobody can swap in another key (not even from the same pid)
+    assert routing.register_key(B, "x" * 48, os.getpid()) is False
+    assert routing.register_key(B, key, os.getpid()) is True
+
+
+def test_socket_addresses_and_name_case_do_not_slip_past_the_guard():
+    t = _tree()
+    t.sock["uds:/tmp/cc-socks/other.sock"] = C
+    ok, why = routing.authorize_send(D, "uds:/tmp/cc-socks/other.sock", t)  # 'other' by socket, not adjacent
+    assert not ok and "Send it to kid" in why
+    assert routing.authorize_send(B, "uds:/tmp/cc-socks/unknown.sock", t)[0] is False
+    ok, why = routing.authorize_send(D, "Other", t)                          # case-folded name
+    assert not ok and "Send it to kid" in why
+    assert routing.authorize_send(B, "LEAD", t) == (True, "")

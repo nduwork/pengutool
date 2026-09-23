@@ -125,11 +125,8 @@ export function registerCommands(context: vscode.ExtensionContext, d: Deps): voi
     if (!n) { return; }
     const name = await vscode.window.showInputBox({ prompt: 'New name', value: n.name });
     if (!name || name === n.name) { return; }
-    // pi renames with pi-intercom's /alias (the name intercom addresses); Claude with /rename
-    const rename = n.harness === 'pi' ? '/alias' : '/rename';
-    if (!(await d.terminals.send(n, `${rename} ${name}`))) {
-      vscode.window.showWarningMessage('PenguPool: open the session first, then rename.');
-    }
+    // ctl picks the command: pi-intercom's /alias (the name intercom addresses) for pi, /rename for Claude
+    await d.terminals.slash(n, 'rename', name);
   });
 
   reg('pengupool.describe', async (node?: SessionNode) => {
@@ -153,7 +150,7 @@ export function registerCommands(context: vscode.ExtensionContext, d: Deps): voi
 
   reg('pengupool.compact', async (node?: SessionNode) => {
     const n = sel(node);
-    if (n) { await d.terminals.send(n, '/compact'); }
+    if (n) { await d.terminals.slash(n, 'compact'); }
   });
 
   reg('pengupool.restart', async (node?: SessionNode) => {

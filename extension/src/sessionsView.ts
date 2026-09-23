@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Harness, SessionNode, Snapshot } from './serveClient';
 import { SessionsProvider } from './sessionsTree';
-import { SESSION_STATES, SESSION_STATE_CSS } from './sessionState';
+import { CTX_LEVEL_CSS, CTX_LEVEL_JS, SESSION_STATES, SESSION_STATE_CSS } from './sessionState';
 import { bothHarnesses, findNode, splitByHarness } from './harness';
 
 type VisibilityEvent = { visible: boolean };
@@ -41,7 +41,9 @@ export class SessionsView implements vscode.WebviewViewProvider, vscode.Disposab
     view.webview.html = sessionsHtml();
     this.disposables.push(
       view.onDidChangeVisibility(() => this._onDidChangeVisibility.fire({ visible: view.visible })),
-      view.webview.onDidReceiveMessage((message) => { void this.receive(message); }),
+      view.webview.onDidReceiveMessage((message) => {
+        this.receive(message).catch((err) => { void vscode.window.showErrorMessage(`PenguPool: ${String(err?.message ?? err)}`); });
+      }),
     );
     this._onDidChangeVisibility.fire({ visible: view.visible });
   }
@@ -148,6 +150,7 @@ export function sessionsHtml(): string {
     background:var(--vscode-menu-selectionBackground); outline:none; }
   #menu hr { margin:4px 0; border:0; border-top:1px solid var(--vscode-menu-separatorBackground); }
   ${SESSION_STATE_CSS}
+  ${CTX_LEVEL_CSS}
 </style></head><body>
 <div id="tree" role="tree" aria-label="PenguPool sessions" tabindex="0"></div>
 <div id="menu" role="menu"></div>
@@ -156,6 +159,7 @@ export function sessionsHtml(): string {
   const tree = document.getElementById('tree');
   const menu = document.getElementById('menu');
   const states = ${JSON.stringify(SESSION_STATES)};
+  ${CTX_LEVEL_JS}
   let selected = '', dragged = '', menuId = '';
   const collapsed = new Set();
 
@@ -205,7 +209,11 @@ export function sessionsHtml(): string {
     const glyph=document.createElement('span'); glyph.className='glyph'; glyph.textContent=state.symbol;
     const name=document.createElement('span'); name.className='name'; name.textContent=node.name;
     const desc=document.createElement('span'); desc.className='desc';
-    desc.textContent=(node.harness==='pi'?'pi · ':'')+(node.repo||'')+(node.ctx_pct!=null?' · '+node.ctx_pct+'% ctx':'');
+    desc.textContent=(node.harness==='pi'?'pi · ':'')+(node.repo||'');
+    if(node.ctx_pct!=null){  // context use, colored by level
+      const ctx=document.createElement('span'); ctx.className=ctxLevel(node.ctx_pct); ctx.textContent=node.ctx_pct+'% ctx';
+      desc.append(' · ',ctx);
+    }
     row.title=[node.name,node.summary||'role not set',state.label,node.cwd,node.status].filter(Boolean).join('\\n');
     row.setAttribute('aria-label',node.name+', '+state.label);
     row.append(twist,glyph,name,desc); wrap.appendChild(row);
@@ -246,6 +254,7 @@ export function sessionsHtml(): string {
       if(list[index]){ select(list[index].dataset.id); list[index].scrollIntoView({block:'nearest'}); } return;
     }
     if(event.key==='Enter'&&selected){ event.preventDefault(); command('pengupool.switch',selected); return; }
+    if(event.ctrlKey||event.metaKey||event.altKey) return;  // Cmd/Ctrl+C is copy, not compact
     const shortcuts={n:'pengupool.new',a:'pengupool.add',g:'pengupool.group',r:'pengupool.rename',d:'pengupool.describe',x:'pengupool.close',c:'pengupool.compact',R:'pengupool.restart'};
     const cmd=shortcuts[event.key]; if(cmd&&(!['g','r','x','c','R'].includes(event.key)||selected)){
       event.preventDefault(); command(cmd,selected); }

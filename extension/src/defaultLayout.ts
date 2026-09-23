@@ -12,6 +12,7 @@ export class DefaultLayout implements vscode.Disposable {
   private opened = false;
   private terminalOpening = false;
   private terminalShown = false;
+  private attemptedFor = '';  // session set the default terminal already failed for: no 1 Hz retry loop
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -42,9 +43,12 @@ export class DefaultLayout implements vscode.Disposable {
 
   private async showTerminal(): Promise<void> {
     if (this.terminalShown || this.terminalOpening || !this.snapshot) { return; }
+    const key = this.snapshot.roots.map((root) => root.id).sort().join();
+    if (key && key === this.attemptedFor) { return; }  // retry only once the sessions change
     this.terminalOpening = true;
     try {
       this.terminalShown = await this.terminals.showDefault(this.snapshot.roots, this.tree.selection[0]);
+      if (!this.terminalShown) { this.attemptedFor = key; }
     } finally {
       this.terminalOpening = false;
     }

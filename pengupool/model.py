@@ -1,6 +1,7 @@
 """Read Claude Code's on-disk state and build session trees. Pure functions, no UI."""
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -68,11 +69,27 @@ def _json(p: Path):
 
 
 def write_json(p: Path, data) -> None:
-    """Atomic: several hooks and front-ends may write the same file; a reader must never see a torn file."""
+    """Atomic: several hooks and front-ends may write the same file; a reader must never see a torn file.
+    A symlinked file (e.g. settings.json in a dotfiles repo) is written through, and its mode is kept."""
+    p = p.resolve() if p.is_symlink() else p
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, indent=1))
+    try:
+        os.chmod(tmp, p.stat().st_mode & 0o7777)
+    except OSError:
+        pass  # new file: umask default
     os.replace(tmp, p)
+
+
+@contextlib.contextmanager
+def locked(p: Path):
+    """Exclusive advisory lock beside `p` for a read-modify-write (not needed for plain reads)."""
+    import fcntl
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p.with_name(f".{p.name}.lock"), "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        yield
 
 
 def load_context_pct(sid: str, max_age: float = 300) -> float | None:
@@ -105,7 +122,8 @@ class ProcTable:
             return self
         rows: dict[int, tuple[int, str, str]] = {}
         try:
-            out = subprocess.run(["ps", "-axo", "pid=,ppid=,lstart=,comm="], capture_output=True, text=True, timeout=5).stdout
+            out = subprocess.run(["ps", "-axo", "pid=,ppid=,lstart=,comm="], capture_output=True, text=True, timeout=5,
+                                 env={**os.environ, "LC_ALL": "C"}).stdout  # lstart is localized otherwise
         except (OSError, subprocess.TimeoutExpired):
             out = ""
         for line in out.splitlines():
@@ -167,17 +185,35 @@ _SESSION_CACHE: dict[str, dict] = {}  # last good parse per file: Claude Code re
 # without this it would vanish from the tree/map for that poll and the UI would jump to the first row.
 
 
+TORN: list[str] = []  # session files still unreadable and just written, as of the last load_sessions()
+
+
+def _session_file(d) -> bool:
+    return isinstance(d, dict) and isinstance(d.get("sessionId"), str) and bool(_SID.match(d["sessionId"])) \
+        and isinstance(d.get("pid"), int) and not isinstance(d.get("pid"), bool) and d["pid"] > 1
+
+
 def load_sessions(now: float | None = None) -> list[dict]:
     now = now or time.time()
     out = []
+    TORN.clear()
     PROCS.refresh()
     for p, h in [(p, "cc") for p in (CLAUDE / "sessions").glob("*.json")] + \
                 [(p, "pi") for p in PI_LIVE.glob("*.json")]:
         d = _json(p)
-        if not isinstance(d, dict) or not isinstance(d.get("sessionId"), str) or not _SID.match(d["sessionId"]) \
-                or not isinstance(d.get("pid"), int) or isinstance(d.get("pid"), bool) or d["pid"] <= 1:
+        for _ in range(3):  # Claude rewrites these non-atomically: a torn read usually heals within ms
+            if _session_file(d):
+                break
+            time.sleep(0.03)
+            d = _json(p)
+        if not _session_file(d):
             d = _SESSION_CACHE.get(str(p))  # torn read: fall back to the last good parse
             if d is None:
+                try:  # still mid-write: callers that must fail closed (the routing guard) check TORN
+                    if now - p.stat().st_mtime < 5:
+                        TORN.append(str(p))
+                except OSError:
+                    pass
                 continue  # sessionId is a path component and argv; pid 0/-1 would hit our own group
         else:
             _SESSION_CACHE[str(p)] = d

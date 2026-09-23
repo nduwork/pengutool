@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Snapshot } from './serveClient';
-import { SESSION_STATES, SESSION_STATE_CSS } from './sessionState';
+import { CTX_LEVEL_CSS, CTX_LEVEL_JS, SESSION_STATES, SESSION_STATE_CSS } from './sessionState';
 import { HarnessTabs, HARNESS_TABS_CSS, HARNESS_TABS_HTML, HARNESS_TABS_JS } from './harness';
 
 /**
@@ -55,7 +55,9 @@ export class MapPanel {
       if (message?.type === 'select' && typeof message.id === 'string') {
         void vscode.commands.executeCommand('pengupool.switch', message.id);
       }
-      if (message?.type === 'refresh') { this.render(); }
+      // Refresh: redraw from the last snapshot now, and restart `pengupool serve` so a fresh process
+      // rebuilds the whole model from disk (sessions, transcripts, roles, chains) and sends it in full.
+      if (message?.type === 'refresh') { this.render(); void vscode.commands.executeCommand('pengupool.refresh'); }
       if (message?.type === 'tab' && this.tabs.pick(message.harness)) { this.render(); }
     });
     this.panel.onDidDispose(() => { if (MapPanel.current === this) { MapPanel.current = undefined; } });
@@ -89,7 +91,8 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   html,body { margin:0; height:100%; background: var(--vscode-editor-background); color: var(--vscode-foreground);
               font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
   #wrap { position:absolute; inset:0; overflow:auto; }
-  .edge { stroke: var(--vscode-panel-border); fill:none; stroke-width:1.2; }
+  .edge { stroke: var(--vscode-descriptionForeground); stroke-opacity:.75; fill:none; stroke-width:2;
+          stroke-linejoin:round; }  /* panel-border is a faint divider colour: edges vanished against it */
   .elabel { fill: var(--vscode-descriptionForeground); font-size:10px; }
   .box { stroke:var(--state-color, var(--vscode-panel-border)); stroke-width:1.5; rx:6;
          fill: var(--vscode-editorWidget-background); transition: stroke 200ms; }
@@ -101,6 +104,7 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   .node:focus { outline:none; }
   .state { color:var(--state-color); font-size:10px; line-height:14px; font-weight:600; }
   ${SESSION_STATE_CSS}
+  ${CTX_LEVEL_CSS}
   .content { box-sizing:border-box; width:100%; height:100%; padding:6px 10px; overflow:hidden;
              display:flex; flex-direction:column; justify-content:center; }
   .nm { color:var(--vscode-editor-foreground, var(--vscode-foreground)); font-weight:600;
@@ -122,7 +126,7 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   body.tabbed #wrap, body.tabbed #empty { top:28px; }
 </style></head><body>
 ${HARNESS_TABS_HTML}
-<button id="refresh" title="Re-measure cards and redraw the map">⟳ Refresh</button>
+<button id="refresh" title="Reload all sessions from disk and redraw the map">⟳ Refresh</button>
 <div id="empty">no sessions</div>
 <div id="wrap"><svg id="svg" width="100%" height="100%"><g id="scene"></g></svg></div>
 <script nonce="${nonce}" src="${dagreUri}"></script>
@@ -133,6 +137,7 @@ ${HARNESS_TABS_HTML}
   const SVGNS = 'http://www.w3.org/2000/svg';
   const HTMLNS = 'http://www.w3.org/1999/xhtml';
   const states = ${JSON.stringify(SESSION_STATES)};
+  ${CTX_LEVEL_JS}
   let topo = null, sizes = '', last = null;
   let selected = '';
   const nodeEls = new Map();
@@ -193,13 +198,15 @@ ${HARNESS_TABS_HTML}
       const body=el('foreignObject',{x:0, y:0, width:nd.width, height:nd.height});
       const content=hel('div',{class:'content'});
       const state=hel('div',{class:'state'}); const nm=hel('div',{class:'nm'}); const meta=hel('div',{class:'meta'});
+      const harness=hel('span',{}), ctx=hel('span',{class:'ctx'}), repo=hel('span',{});  // ctx% is colored by level
+      meta.appendChild(harness); meta.appendChild(ctx); meta.appendChild(repo);
       const chain=hel('div',{class:'chain'});
       content.appendChild(state); content.appendChild(nm); content.appendChild(meta); content.appendChild(chain); body.appendChild(content);
       const select=()=>vscode.postMessage({type:'select', id:n.id});
       grp.addEventListener('click', select);
       grp.addEventListener('keydown', ev=>{ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); select(); } });
       grp.appendChild(ring); grp.appendChild(rect); grp.appendChild(title); grp.appendChild(body); scene.appendChild(grp);
-      nodeEls.set(n.id, {grp, title, state, nm, meta, chain});
+      nodeEls.set(n.id, {grp, title, state, nm, meta, harness, ctx, repo, chain});
     });
     const gr=g.graph(); document.getElementById('svg').setAttribute('viewBox', '0 0 '+(gr.width||100)+' '+(gr.height||100));
     document.getElementById('svg').setAttribute('width', (gr.width||100)); document.getElementById('svg').setAttribute('height', (gr.height||100));
@@ -213,8 +220,10 @@ ${HARNESS_TABS_HTML}
       e.grp.setAttribute('aria-label','Open '+n.name+', '+visual.label);
       e.state.textContent=visual.symbol+' '+visual.label;
       e.nm.textContent = n.name;
-      const ctx = n.ctx_pct!=null ? (n.ctx_pct+'% · ') : '';
-      e.meta.textContent = (n.harness==='pi'?'pi · ':'') + ctx + (n.repo||'');
+      e.harness.textContent = n.harness==='pi' ? 'pi · ' : '';
+      e.ctx.textContent = n.ctx_pct!=null ? n.ctx_pct+'%' : '';
+      e.ctx.className = n.ctx_pct!=null ? 'ctx '+ctxLevel(n.ctx_pct) : 'ctx';
+      e.repo.textContent = (n.ctx_pct!=null ? ' · ' : '') + (n.repo||'');
       e.chain.textContent = n.status || '';
       e.chain.style.display = n.status ? '' : 'none';   // no chain, no reserved space
       e.title.textContent = n.name + ' · '+visual.label + (n.repo ? ' · '+n.repo : '') + (n.status ? '\\n'+n.status : '');
@@ -231,12 +240,14 @@ ${HARNESS_TABS_HTML}
     }
     const snap = last = ev.data;
     const key = sizeKey(snap.roots);
-    if(snap.topo_hash !== topo || key !== sizes){ topo = snap.topo_hash; sizes = key; relayout(snap); }
+    if(snap.topo_hash !== topo || key !== sizes || fresh){ fresh = false; topo = snap.topo_hash; sizes = key; relayout(snap); }
     restyle(snap);
   });
-  // Refresh: forget the cached layout and redraw now, then ask for a fresh snapshot.
+  // Refresh: forget the cached layout and redraw now, then reload everything from the backend and
+  // lay the map out again from that fresh snapshot, even when its structure did not change.
+  let fresh = false;
   function redraw(){ topo = null; sizes = ''; if(last){ relayout(last); restyle(last); } }
-  document.getElementById('refresh').addEventListener('click', () => { redraw(); vscode.postMessage({type:'refresh'}); });
+  document.getElementById('refresh').addEventListener('click', () => { fresh = true; redraw(); vscode.postMessage({type:'refresh'}); });
   document.fonts?.ready.then(redraw);   // sizes measured before the editor font loaded are wrong
   vscode.postMessage({type:'ready'});
 </script></body></html>`;

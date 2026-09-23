@@ -285,14 +285,18 @@ def stop(pid: int, grace: float = 8.0) -> bool:
         return False
     try:
         os.kill(pid, 15)
-    except OSError:
+    except ProcessLookupError:
         return True
+    except OSError:
+        return False  # EPERM: the pid now belongs to someone else's process; it is not our session
     deadline = time.time() + grace
     while time.time() < deadline:
         try:
             os.kill(pid, 0)
-        except OSError:
+        except ProcessLookupError:
             return True
+        except OSError:
+            pass
         time.sleep(0.2)
     try:
         os.kill(pid, 9)
@@ -305,6 +309,13 @@ def send(pane: str, text: str, h: str = "cc") -> bool:
     if not pane_exists(pane, h):
         return False
     return _ok("send-keys", "-t", pane, "-l", text, h=h) and _ok("send-keys", "-t", pane, "Enter", h=h)
+
+
+def slash(pane: str, text: str, h: str = "cc") -> bool:
+    """Type a slash command into the agent's own pane: clear the input line first (C-u) so a half-typed
+    prompt is not submitted with it. ponytail: C-u clears one line; a multi-line draft keeps its
+    earlier lines. Upgrade path: the harness's own "clear input" key if it gains one."""
+    return pane_exists(pane, h) and _ok("send-keys", "-t", pane, "C-u", h=h) and send(pane, text, h)
 
 
 def kill(pane: str, pid: int, h: str = "cc") -> bool:

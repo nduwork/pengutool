@@ -48,6 +48,8 @@ function loadPanel(sourceName) {
           blocked: { symbol: '?', label: 'Approval' },
         },
         SESSION_STATE_CSS: '.state-active { --state-color: green; }',
+        CTX_LEVEL_JS: load('sessionState').CTX_LEVEL_JS,   // the real level rule, so tests check it
+        CTX_LEVEL_CSS: '',
       };
       throw new Error('Unexpected dependency: ' + id);
   };
@@ -160,6 +162,8 @@ test('map has a refresh button that redraws and asks for a fresh snapshot', () =
   const before = h.data().length;
   h.send({ type: 'refresh' });
   assert.equal(h.data().length, before + 1);
+  assert.deepEqual(h.commands.at(-1), ['pengupool.refresh']);  // reload everything from the backend
+  assert.match(h.html(), /fresh = true/);                      // and re-lay out from that snapshot
 });
 
 test('map refreshes workflow and context without a topology change', () => {
@@ -170,7 +174,7 @@ test('map refreshes workflow and context without a topology change', () => {
   vm.createContext(sandbox);
   vm.runInContext(script, sandbox);
   vm.runInContext(`
-    const card = {grp: {setAttribute() {}}, state: {}, nm: {}, meta: {}, title: {}, chain: {style: {}}};
+    const card = {grp: {setAttribute() {}}, state: {}, nm: {}, meta: {}, harness: {}, ctx: {}, repo: {}, title: {}, chain: {style: {}}};
     nodeEls.set('one', card);
     restyle({roots:[{id:'one', name:'One', repo:'repo', state:'active', ctx_pct:68,
                     status:'[fix] diagnose ● → verify ○', children:[]}]});
@@ -178,7 +182,11 @@ test('map refreshes workflow and context without a topology change', () => {
     restyle({roots:[{id:'one', name:'One', repo:'repo', state:'active', ctx_pct:2,
                     status:'[fix] diagnose ✓ → verify ●', children:[]}]});
     if(card.chain.textContent !== '[fix] diagnose ✓ → verify ●') throw Error('stale chain');
-    if(!card.meta.textContent.startsWith('2%')) throw Error('stale context');
+    if(card.ctx.textContent !== '2%' || card.ctx.className !== 'ctx ctx-low') throw Error('stale context');
+    restyle({roots:[{id:'one', name:'One', repo:'repo', state:'active', ctx_pct:45, status:'', children:[]}]});
+    if(card.ctx.className !== 'ctx ctx-mid') throw Error('45% should be orange');
+    restyle({roots:[{id:'one', name:'One', repo:'repo', state:'active', ctx_pct:60, status:'', children:[]}]});
+    if(card.ctx.className !== 'ctx ctx-high') throw Error('60% should be red');
   `, sandbox);
 });
 

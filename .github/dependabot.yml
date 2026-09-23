@@ -1,17 +1,23 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  - package-ecosystem: uv  # updates uv.lock (the pip ecosystem does not)
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3  # same 3-day cooloff as the installer
   - package-ecosystem: npm
     directory: /extension
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3  # same 3-day cooloff as the installer
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3  # same 3-day cooloff as the installer
