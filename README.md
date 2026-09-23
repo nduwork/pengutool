@@ -2,14 +2,14 @@
 
 **See your agent sessions in one place.** PenguPool is a VS Code/Cursor extension, backed by a local Python CLI, for managing Claude Code and pi sessions. It shows the session tree, a live map of who is talking to whom, recent messages, and a tmux-backed terminal per harness. Sessions run in tmux and keep running when you close the editor.
 
-[Landing page](docs/index.html) · [VS Code extension](extension/README.md) · [Contributing](.github/CONTRIBUTING.md) · [MIT license](LICENSE)
+[Website](https://pengupool.nduwork.com) · [VS Code extension](extension/README.md) · [Contributing](.github/CONTRIBUTING.md) · [MIT license](LICENSE)
 
 ## Install
 
 One command installs the latest release: the `pengupool` CLI, the wiring for every installed harness (Claude Code, pi), the workflow tracker, and the extension in every VS Code and Cursor it finds.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash
+curl -fsSL https://pengupool.nduwork.com/install.sh | bash
 ```
 
 It needs Python 3.11+ and Make, installs [uv](https://docs.astral.sh/uv/) if missing, and offers tmux 3.2+ and the agent CLIs (y/N each). `PENGUPOOL_REF=vX.Y.Z` pins a release; `HARNESS=cc|pi|both` and `EDITOR_CLI=code|cursor` override detection. From a checkout, `bash install.sh` installs that tree.

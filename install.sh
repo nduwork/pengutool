@@ -2,7 +2,7 @@
 # One-command PenguPool install: the CLI, wiring for every installed harness (Claude Code, pi), the
 # workflow tracker, and the editor extension (with its logo) in every VS Code / Cursor found.
 #
-#   curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash
+#   curl -fsSL https://pengupool.nduwork.com/install.sh | bash
 #   bash install.sh                      # from a checkout: installs that tree
 #
 # PENGUPOOL_REF=vX.Y.Z pins a release (default: the latest). HARNESS=cc|pi|both overrides detection.

@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "nduwork",
   "license": "MIT",
+  "homepage": "https://pengupool.nduwork.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/nduwork/pengutool"

@@ -1,0 +1,40 @@
+name: pages
+
+# Deploys docs/ (the landing page) to GitHub Pages at pengupool.nduwork.com (docs/CNAME), and serves the
+# canonical root install.sh at pengupool.nduwork.com/install.sh. Pages source must be set to "GitHub
+# Actions" in Settings → Pages. docs/ is plain static HTML, so no Jekyll pass is needed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "install.sh"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push supersedes a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      # The checkout is ephemeral, so this copy never gets committed: install.sh has one source of truth.
+      - run: cp install.sh docs/install.sh
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v5

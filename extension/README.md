@@ -15,7 +15,7 @@ workspace and extension host run.
 **One command** installs the backend and this extension together, in every VS Code and Cursor found:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash
+curl -fsSL https://pengupool.nduwork.com/install.sh | bash
 ```
 
 Or step by step:
