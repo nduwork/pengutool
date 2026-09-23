@@ -20,7 +20,7 @@ jobs:
       - run: uv sync --group dev
       - name: Never publish a red tag
         run: uv run pytest -q
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
