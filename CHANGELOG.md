@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-23
+
 ### Added
 - Website at https://pengupool.nduwork.com: an animated tutorial of a real pool, a demo script for presenting it, and a best-practices guide (`docs/guide.md`). Install with `curl -fsSL https://pengupool.nduwork.com/install.sh | bash`.
 - Map and Sessions view: context use is coloured by level: green below 30%, orange below 60%, red from 60%. **⟳ Refresh** now reloads everything from the backend and lays the map out again.
@@ -24,6 +26,7 @@ All notable changes to this project are documented here. The format follows
 - A new session may share a folder with an existing one; the new-session picker and docs say so.
 - CI runs only the suites a change needs; docs-only changes skip both.
 
+- Editor extension: 0.1.1 (install both with `install.sh`; they ship together in this tag).
 ## [0.1.0] - 2026-09-23
 
 First public release.

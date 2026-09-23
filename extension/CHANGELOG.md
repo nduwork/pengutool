@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- terminals, shortcuts, rename/compact; clearer map
+- a long busy turn no longer shows as stale; sessions may share a folder (#1)
+
+Ships with PenguPool v0.2.0.
+
 ## 0.1.0
 
 - First public release: Sessions and pi Sessions trees, live map, message log, and one tmux-backed terminal per harness.
