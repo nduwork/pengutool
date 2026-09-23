@@ -60,6 +60,9 @@ def test_make_forwards_install_and_uninstall_to_selected_editor(tmp_path):
         result = subprocess.run(['make', target, 'MAKE=true', f'EDITOR_CLI={cli}'],
                                 cwd=root, env=env, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
-    assert log.read_text().splitlines() == [
-        '--install-extension', str(root / 'extension/pengupool-local.vsix'), '--force',
-        '--uninstall-extension', 'nduwork.pengupool']
+    args = log.read_text().splitlines()
+    assert args[0] == '--install-extension'
+    assert Path(args[1]).name == 'pengupool-local.vsix'
+    assert not Path(args[1]).is_relative_to(root)
+    assert not Path(args[1]).parent.exists()
+    assert args[2:] == ['--force', '--uninstall-extension', 'nduwork.pengupool']
