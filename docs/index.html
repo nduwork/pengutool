@@ -14,6 +14,7 @@
   <header class="site-header">
     <a class="brand" href="#top"><span class="brand-icon"><img src="assets/penguin.svg" alt=""></span> PenguPool</a>
     <nav aria-label="Main navigation">
+      <a href="#tutorial">Demo</a>
       <a href="#plugins">Plugins</a>
       <a href="#guide">Guide</a>
       <a href="#how-it-works">How it works</a>
@@ -34,59 +35,54 @@
         </div>
         <p class="install-note">Installs the CLI, the wiring for each installed harness, and the extension in every VS Code and Cursor it finds. Needs Python 3.11+, Make, tmux 3.2+, and Claude Code and/or pi. <a href="https://github.com/nduwork/pengutool#install">Other install options →</a></p>
         <div class="actions">
-          <a class="button secondary" href="#plugins">See the plugins</a>
+          <a class="button secondary" href="#tutorial">Watch the demo</a>
           <a class="button secondary" href="#guide">Read the guide</a>
         </div>
         <p class="hero-note">Open source · MIT · macOS &amp; Linux · v0.1.0 · local only, no hosted account</p>
       </div>
-      <div class="ide" role="img" aria-label="The PenguPool extension in Cursor: the Claude Sessions and Pi Sessions trees in the sidebar, the session map and message log side by side, and the PenguPool terminal below">
-        <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop-app — Cursor</span><span></span></div>
-        <div class="ide-body">
-          <div class="ide-activity" aria-hidden="true"><span>⧉</span><span>⌕</span><span>⑂</span><span class="on"><img src="assets/penguin.svg" alt=""></span></div>
-          <div class="ide-side">
-            <div class="side-title">PENGUPOOL</div>
-            <div class="side-sec">⌄ CLAUDE SESSIONS</div>
-            <div class="row sel st-active"><span class="g">●</span><b>lead</b><em>shop-app · 38% ctx</em></div>
-            <div class="row in st-active"><span class="g">●</span><b>api</b><em>shop-app-wt-api · 51% ctx</em></div>
-            <div class="row in st-waiting"><span class="g">◷</span><b>ui</b><em>shop-app · 22% ctx</em></div>
-            <div class="row in st-blocked"><span class="g">?</span><b>reviewer</b><em>shop-app · 64% ctx</em></div>
-            <div class="side-sec">⌄ PI SESSIONS</div>
-            <div class="row st-stale"><span class="g">○</span><b>docs-writer</b><em>pi · shop-app</em></div>
-            <div class="side-sec closed">› SHORTCUTS</div>
-          </div>
-          <div class="ide-main">
-            <div class="ide-editors">
-              <div class="ide-group">
-                <div class="ide-tabs"><span class="tab on"><img src="assets/penguin.svg" alt="">PenguPool Map</span></div>
-                <div class="map-pane">
-                  <span class="refresh">⟳ Refresh</span>
-                  <svg class="edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M50 39 V49 H18 V60 M50 49 H82 V60 M50 49 V60"/></svg>
-                  <span class="elabel">token refresh</span>
-                  <div class="card lead st-active sel"><div class="st">● Active</div><div class="nm">lead</div><div class="meta">shop-app · 38%</div><div class="ch">[ship-auth] api ✓ → ui ● → review ○</div></div>
-                  <div class="card c1 st-active"><div class="st">● Active</div><div class="nm">api</div><div class="meta">shop-app-wt-api · 51%</div></div>
-                  <div class="card c2 st-waiting"><div class="st">◷ Waiting</div><div class="nm">ui</div><div class="meta">shop-app · 22%</div></div>
-                  <div class="card c3 st-blocked"><div class="st">? Approval</div><div class="nm">reviewer</div><div class="meta">shop-app · 64%</div></div>
+    </section>
+
+    <section class="tutorial wrap" id="tutorial" aria-labelledby="tut-h">
+      <div class="section-intro"><span class="eyebrow">SEE IT IN ACTION</span><h2 id="tut-h">From install to a working pool.</h2><p>Seven short scenes, played on the real layout: one parent, three children, one request routed through the tree.</p></div>
+      <div class="tut" id="tut">
+        <div class="ide" id="stage" role="img" aria-label="Animated walkthrough of the PenguPool extension in Cursor; the caption below describes each scene">
+          <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop-app — Cursor</span><span></span></div>
+          <div class="ide-body">
+            <div class="ide-activity" aria-hidden="true"><span>⧉</span><span>⌕</span><span>⑂</span><span class="on"><img src="assets/penguin.svg" alt=""></span></div>
+            <div class="ide-side"></div>
+            <div class="ide-main">
+              <div class="ide-editors">
+                <div class="ide-group">
+                  <div class="ide-tabs"><span class="tab on"><img src="assets/penguin.svg" alt="">PenguPool Map</span></div>
+                  <div class="map-pane">
+                    <span class="refresh">⟳ Refresh</span>
+                    <svg class="edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d=""/></svg>
+                    <div class="cards"></div>
+                    <div class="map-empty">no sessions</div>
+                  </div>
+                </div>
+                <div class="ide-group log">
+                  <div class="ide-tabs"><span class="tab on"><img src="assets/penguin.svg" alt="">PenguPool Log</span></div>
+                  <div class="log-pane"><div class="legend"><span class="lg">parent → child</span><span class="lb">child → parent</span><span class="lo">@session</span></div><div class="lrows"></div></div>
                 </div>
               </div>
-              <div class="ide-group log">
-                <div class="ide-tabs"><span class="tab on"><img src="assets/penguin.svg" alt="">PenguPool Log</span></div>
-                <div class="log-pane">
-                  <div class="legend"><span class="lg">parent → child</span><span class="lb">child → parent</span><span class="lo">@session</span></div>
-                  <div class="lrow"><i>09/23/2026-14:02:11</i><span><b class="lg">lead ⇢ api</b>: add the token refresh endpoint</span></div>
-                  <div class="lrow"><i>09/23/2026-14:02:12</i><span><b class="lg">lead ⇢ ui</b>: wire refresh into the login form</span></div>
-                  <div class="lrow"><i>09/23/2026-14:06:40</i><span><b class="lb">api ⇢ lead</b>: endpoint done, tests pass</span></div>
-                  <div class="lrow"><i>09/23/2026-14:07:05</i><span><b class="lo">ui ⇢ reviewer</b>: can you check the form diff?</span></div>
-                </div>
+              <div class="ide-panel">
+                <div class="panel-tabs"><span>PROBLEMS</span><span>OUTPUT</span><span class="on">TERMINAL</span><span class="term-name"></span></div>
+                <div class="term"></div>
               </div>
-            </div>
-            <div class="ide-panel">
-              <div class="panel-tabs"><span>PROBLEMS</span><span>OUTPUT</span><span class="on">TERMINAL</span><span class="term-name">⌨ PenguPool</span></div>
-              <div class="term"><div><span class="you">&gt;</span> Add token refresh to login. api owns the endpoint, ui the form.</div><div><span class="dot">⏺</span> Triage: → api, ui</div><div class="dim">  ⎿ SendMessage api · SendMessage ui</div><div><span class="dot">⏺</span> Both are on it. I'll review once they report back.</div><div class="box"><span class="you">&gt;</span> <span class="cursor"></span></div></div>
+              <div class="qp" hidden></div>
+              <div class="toast" hidden></div>
             </div>
           </div>
+          <div class="ide-status"><span>⎇ main</span><span class="chain"></span></div>
+          <div class="ctx" hidden></div><div class="tip" hidden></div><kbd class="keycap" hidden></kbd>
+          <svg class="ptr" viewBox="0 0 16 22" aria-hidden="true"><path d="M1 1 L1 17 L5.5 13 L8.5 20 L11 19 L8 12 L14 12 Z"/></svg>
         </div>
-        <div class="ide-status"><span>⎇ main</span><span>[ship-auth] api ✓ → ui ● → review ○</span></div>
+        <div class="cap" aria-live="polite"><span class="cap-n">1</span><div><b class="cap-t"></b><p class="cap-p"></p></div></div>
       </div>
+      <div class="tut-ctl"><button type="button" class="button secondary" id="tplay">❚❚ Pause</button><ol id="chapters" class="chapters" aria-label="Scenes"></ol></div>
+      <noscript><style>#tut,.tut-ctl{display:none}</style><img class="tut-gif" src="assets/tutorial/5-ask-the-top.gif" alt="PenguPool routing a request from the lead session to its children"></noscript>
+      <a class="more" href="https://github.com/nduwork/pengutool/blob/main/docs/tutorial-script.md">Read the demo script →</a>
     </section>
 
     <section class="features wrap" id="plugins">
@@ -130,5 +126,6 @@
       });
     });
   </script>
+  <script src="tutorial.js" defer></script>
 </body>
 </html>
