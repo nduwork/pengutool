@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="PenguPool brings Claude Code and pi sessions together in a local VS Code/Cursor extension.">
+  <meta name="description" content="PenguPool is a VS Code/Cursor extension and pi extension that keeps Claude Code and pi sessions in one view: session tree, live map, message log, and tmux-backed terminals.">
   <meta name="theme-color" content="#0b1320">
-  <title>PenguPool — your agent sessions, in view</title>
+  <title>PenguPool — agent sessions in your editor</title>
   <link rel="icon" type="image/svg+xml" href="assets/penguin.svg">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -13,6 +13,7 @@
   <header class="site-header">
     <a class="brand" href="#top"><span class="brand-icon"><img src="assets/penguin.svg" alt=""></span> PenguPool</a>
     <nav aria-label="Main navigation">
+      <a href="#plugins">Plugins</a>
       <a href="#how-it-works">How it works</a>
       <a href="#install">Install</a>
       <a href="https://github.com/nduwork/pengutool">GitHub ↗</a>
@@ -22,21 +23,32 @@
   <main id="top">
     <section class="hero wrap">
       <div class="hero-copy">
-        <span class="eyebrow"><span class="pulse"></span> LOCAL-FIRST AGENT WORKSPACE</span>
-        <h1>Every agent session.<br><em>One clear view.</em></h1>
-        <p>Run Claude Code and pi side by side. See your session tree, follow messages, and jump into live work without losing your place.</p>
+        <span class="eyebrow"><span class="pulse"></span> VS CODE · CURSOR · PI</span>
+        <h1>Every agent session.<br><em>In your editor.</em></h1>
+        <p>The PenguPool extension puts your Claude Code and pi sessions in the VS Code or Cursor sidebar: a session tree, a live map of who is talking to whom, the message log, and a terminal that switches between live sessions without restarting them.</p>
         <div class="actions">
           <a class="button primary" href="#install">Get started <span aria-hidden="true">→</span></a>
-          <a class="button secondary" href="https://github.com/nduwork/pengutool">View source ↗</a>
+          <a class="button secondary" href="#plugins">See the plugins</a>
         </div>
-        <p class="hero-note">Open source · macOS &amp; Linux · VS Code &amp; Cursor</p>
+        <p class="hero-note">Open source · MIT · macOS &amp; Linux · v0.1.0</p>
       </div>
-      <div class="preview" role="img" aria-label="Illustration of the PenguPool session list, live agent map, and terminal">
-        <div class="preview-top"><div class="dots"><i></i><i></i><i></i></div><span>pengupool</span><span>⌘ 1</span></div>
+      <div class="preview" role="img" aria-label="Illustration of the PenguPool extension in an editor: session tree, live map, and terminal">
+        <div class="preview-top"><div class="dots"><i></i><i></i><i></i></div><span>PenguPool — VS Code</span><span>⇧R restart</span></div>
         <div class="preview-body">
-          <aside class="preview-list"><div class="pane-label">SESSIONS <b>3</b></div><div class="session selected"><span class="live"></span><div>Ship the feature<small>Claude Code · active</small></div></div><div class="session nested"><span class="live"></span><div>Build the UI<small>Claude Code · active</small></div></div><div class="session nested"><span class="idle"></span><div>Review changes<small>Claude Code · waiting</small></div></div><div class="preview-foot">+ New session</div></aside>
-          <div class="preview-main"><div class="map"><div class="pane-label">SESSION MAP <span>LIVE</span></div><div class="nodes"><div class="node parent">Ship the feature</div><div class="branch"></div><div class="children"><div class="node child">Build the UI</div><div class="node child">Review changes</div></div></div></div><div class="terminal"><div class="pane-label">TERMINAL <span>● CLAUDE CODE</span></div><code><span class="prompt">❯</span> Working on the session view…<br><span class="muted">  ✓ Sidebar wired to live sessions</span><br><span class="muted">  ✓ Map updated</span><br><span class="prompt">❯</span> <span class="cursor"></span></code></div></div>
+          <aside class="preview-list"><div class="pane-label">SESSIONS <b>3</b></div><div class="session selected"><span class="live"></span><div>Ship the feature<small>Claude Code · active</small></div></div><div class="session nested"><span class="live"></span><div>Build the UI<small>Claude Code · active</small></div></div><div class="session nested"><span class="idle"></span><div>Review changes<small>Claude Code · waiting</small></div></div><div class="pane-label">PI SESSIONS <b>1</b></div><div class="session"><span class="live"></span><div>Draft the docs<small>pi · active</small></div></div><div class="preview-foot">+ New session · n</div></aside>
+          <div class="preview-main"><div class="map"><div class="pane-label">SESSION MAP <span>LIVE</span></div><div class="nodes"><div class="node parent">Ship the feature</div><div class="branch"></div><div class="children"><div class="node child">Build the UI</div><div class="node child">Review changes</div></div></div></div><div class="terminal"><div class="pane-label">PENGUPOOL TERMINAL <span>● CLAUDE CODE</span></div><code><span class="prompt">❯</span> Working on the session view…<br><span class="muted">  ✓ Sidebar wired to live sessions</span><br><span class="muted">  ✓ Map updated</span><br><span class="prompt">❯</span> <span class="cursor"></span></code></div></div>
         </div>
+      </div>
+    </section>
+
+    <section class="wrap"><aside class="notice" aria-label="Change in 0.1.0"><span class="notice-tag">CHANGED IN 0.1.0</span><div><h2>The terminal UI is retired.</h2><p>PenguPool now runs through its editor and pi plugins. The Textual terminal app and the bare <code>pengupool</code> launcher are gone; running <code>pengupool</code> prints help. The CLI stays as the local backend behind the plugins (<code>pengupool serve</code>, <code>pengupool ctl</code>, <code>pengupool setup</code>), and sessions still live in tmux, so nothing you had running is lost.</p></div></aside></section>
+
+    <section class="features wrap" id="plugins">
+      <div class="section-intro"><span class="eyebrow">THE PLUGINS</span><h2>One backend, three ways in.</h2><p>Each harness gets its own wiring. They all read the same local model under <code>~/.pengupool/</code>, and one tag ships a matching backend and extension.</p></div>
+      <div class="feature-grid plugin-grid">
+        <article><div class="feature-icon">▣</div><h3>VS Code &amp; Cursor extension</h3><ul><li>Sessions and pi Sessions trees; drag a row to regroup</li><li>Live map with cards sized to their text and a <b>⟳ Refresh</b> button</li><li>Message log coloured by edge: parent → child, child → parent, <code>@session</code></li><li>One tmux-backed terminal per harness that switches sessions in place</li><li><kbd>Shift</kbd>+<kbd>R</kbd> Restart &amp; Resume after a Claude Code or pi update</li></ul></article>
+        <article><div class="feature-icon">⚓</div><h3>Claude Code hooks</h3><ul><li>A <code>&lt;pengupool&gt;</code> block each prompt: tree, parent, children, role</li><li><code>SendMessage</code> guard: parent and direct children only</li><li><code>ROUTE REQUIRED</code> when a prompt matches a child's keywords, checked again at Stop</li><li><code>ROLE REQUIRED</code> until the session describes itself</li></ul></article>
+        <article><div class="feature-icon">π</div><h3>pi extension</h3><ul><li>The same tree block, appended to pi's system prompt</li><li>pi-intercom <code>send</code>/<code>ask</code> checked against the routing rule</li><li>Workflow chain in pi's footer and prompt</li><li>Its own tmux server; never grouped with Claude Code sessions</li></ul></article>
       </div>
     </section>
 
@@ -44,12 +56,12 @@
       <div class="section-intro"><span class="eyebrow">BUILT FOR MANY MOVING PARTS</span><h2>Keep the whole pool in sight.</h2><p>PenguPool makes local agent work easier to follow while the agents keep running in their own sessions.</p></div>
       <div class="feature-grid">
         <article><div class="feature-icon">⌘</div><h3>Switch without starting over</h3><p>Open live tmux sessions from any editor window. Close the editor and come back to the same work.</p></article>
-        <article><div class="feature-icon">⑂</div><h3>See the relationships</h3><p>Group sessions into a tree and follow a live map of parent, child, and cross-session messages.</p></article>
-        <article><div class="feature-icon">◎</div><h3>Give each session room</h3><p>Start work in an isolated git worktree, describe each session's role, and track its current phase.</p></article>
+        <article><div class="feature-icon">⑂</div><h3>Route work, not guesses</h3><p>Group sessions into a tree. Messages go only one edge at a time, and tagging <code>@reviewer</code> in a prompt opens a direct line until your next one.</p></article>
+        <article><div class="feature-icon">◎</div><h3>Give each session room</h3><p>Start work in an isolated git worktree, describe each session's role and routing keywords, and track its current phase.</p></article>
       </div>
     </section>
 
-    <section class="install-section" id="install"><div class="wrap install-layout"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Start on your machine.</h2><p>One command installs the backend and the editor extension. PenguPool reads local session data; there is no hosted account to set up.</p><p class="requirements">Requires Python 3.11+, Make, tmux 3.2+, VS Code or Cursor, and Claude Code and/or pi.</p></div><div class="code-card"><div class="code-title">TERMINAL</div><pre><code>curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash</code></pre><a href="https://github.com/nduwork/pengutool#install">Full setup guide →</a></div></div></section>
+    <section class="install-section" id="install"><div class="wrap install-layout"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Start on your machine.</h2><p>One command installs the backend, the wiring for each installed harness, and the extension in every VS Code and Cursor it finds. PenguPool reads local session data; there is no hosted account to set up.</p><p class="requirements">Requires Python 3.11+, Make, tmux 3.2+, VS Code or Cursor, and Claude Code and/or pi.</p></div><div class="code-card"><div class="code-title">TERMINAL</div><pre><code>curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash</code></pre><a href="https://github.com/nduwork/pengutool#install">Full setup guide →</a></div></div></section>
   </main>
   <footer class="wrap"><span>© 2026 PenguPool · MIT licensed</span><div><a href="https://github.com/nduwork/pengutool">Source</a><a href="https://github.com/nduwork/pengutool/blob/main/.github/CONTRIBUTING.md">Contribute</a><a href="https://github.com/nduwork/pengutool/blob/main/.github/SECURITY.md">Security</a></div></footer>
 </body>
