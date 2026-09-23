@@ -15,7 +15,7 @@ workspace and extension host run.
 **One command** installs the backend and this extension together, in every VS Code and Cursor found:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nduwork/pengutool/main/install.sh | bash
+curl -fsSL https://pengupool.nduwork.com/install.sh | bash
 ```
 
 Or step by step:
@@ -110,6 +110,8 @@ Claude Code or pi update takes effect without losing the session or its group.
 
 Grouping is session-based: use `c` or `/compact` to stay grouped. Do not use `/new` or `/clear`,
 because either command starts a new session and removes it from the current group.
+See the [guide](https://github.com/nduwork/pengutool/blob/main/docs/guide.md) for how to brief a new child and
+keep work routed.
 
 ## Install, update, and remove
 
