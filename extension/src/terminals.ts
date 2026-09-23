@@ -33,7 +33,7 @@ export class TerminalManager implements vscode.Disposable {
   private roots: SessionNode[] = [];
   private readonly disp: vscode.Disposable[] = [];
   private readonly legacyNames = new Set<string>();
-  private readonly sessionNames = new Set<string>();
+  private legacySwept = false;  // the one post-activation sweep for restored old-build terminals
 
   constructor(private readonly ctx: vscode.ExtensionContext) {
     this.removeLegacyTerminals();
@@ -77,8 +77,12 @@ export class TerminalManager implements vscode.Disposable {
     if (names.length) { void this.ctx.workspaceState.update(LEGACY_STATE_KEY, undefined); }
   }
 
-  private removeLegacyTerminal(terminal: vscode.Terminal): void {
-    if (!this.owns(terminal) && (this.legacyNames.has(terminal.name) || this.sessionNames.has(terminal.name))) {
+  /** Old builds created one terminal per session, named after it. Only a terminal explicitly created
+   * with that name counts (a user's own shell has no creationOptions.name), never one merely called so. */
+  private removeLegacyTerminal(terminal: vscode.Terminal, sessionNames?: Set<string>): void {
+    if (this.owns(terminal)) { return; }
+    const named = (terminal.creationOptions as vscode.TerminalOptions | undefined)?.name;
+    if (this.legacyNames.has(terminal.name) || (!!named && named === terminal.name && !!sessionNames?.has(named))) {
       terminal.dispose();
     }
   }
@@ -86,11 +90,13 @@ export class TerminalManager implements vscode.Disposable {
   reconcile(roots: SessionNode[]): void {
     this.roots = roots;
     // VS Code can restore disconnected terminals after extension activation. Old PenguPool builds
-    // named each shell after its session; remove those once the live session names are known.
-    this.sessionNames.clear();
-    flatten(roots).forEach((node) => this.sessionNames.add(node.name));
-    for (const terminal of vscode.window.terminals) {
-      this.removeLegacyTerminal(terminal);
+    // named each shell after its session; remove those once, on the first snapshot. Never keep
+    // matching live names: any session can rename itself (e.g. to "zsh") and would close user shells.
+    if (!this.legacySwept && roots.length) {
+      this.legacySwept = true;
+      const names = new Set(flatten(roots).map((node) => node.name));
+      for (const terminal of vscode.window.terminals) { this.removeLegacyTerminal(terminal, names); }
+      this.legacyNames.clear();
     }
     for (const [harness, slot] of this.slots) {
       if (!slot.pending) { continue; }
@@ -250,9 +256,15 @@ export class TerminalManager implements vscode.Disposable {
     if (slot.currentId === node.id) { slot.currentId = undefined; }
   }
 
-  async send(node: SessionNode, text: string): Promise<boolean> {
+  /** /compact or /rename a session: ctl clears the agent's input line and types into the session's own
+   * pane, so a half-typed prompt is never submitted with it and a concurrent switch can't redirect it. */
+  async slash(node: SessionNode, ...args: ['compact'] | ['rename', string]): Promise<boolean> {
     if (!(await this.switchTo(node))) { return false; }
-    this.slot(node.harness).term!.sendText(text, true);
+    const result = await runCtl(['slash', node.id, ...args]);
+    if (result.code !== 0) {
+      vscode.window.showErrorMessage(`PenguPool: ${result.stderr || `could not ${args[0]} session`}`);
+      return false;
+    }
     return true;
   }
 

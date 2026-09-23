@@ -227,6 +227,20 @@ test('late-restored legacy session terminals are removed after the first snapsho
   assert.equal(legacy.disposed, true);
 });
 
+test('a user terminal named like a session is never closed', () => {
+  const h = harness();
+  h.manager.reconcile([node]);                        // the one-time legacy sweep is done
+  const mine = { name: node.name, creationOptions: {}, exitStatus: undefined, disposed: false, dispose() { this.disposed = true; } };
+  h.terminals.push(mine);
+  h.manager.reconcile([node]);
+  assert.equal(mine.disposed, false);
+  const restored = { name: node.name, creationOptions: {}, exitStatus: undefined, disposed: false, dispose() { this.disposed = true; } };
+  const fresh = harness();
+  fresh.terminals.push(restored);                     // a user shell present at the first snapshot, no explicit name
+  fresh.manager.reconcile([node]);
+  assert.equal(restored.disposed, false);
+});
+
 test('opening the work pane removes an untouched auto-created shell terminal', async () => {
   const h = harness();
   const shell = {
