@@ -11,6 +11,7 @@
   const RECORD = Number(new URLSearchParams(location.search).get('record')) || 0;
   const GLYPH = { active: '●', waiting: '◷', stale: '○', blocked: '?' };
   const LABEL = { active: 'Active', waiting: 'Waiting', stale: 'Stale', blocked: 'Approval' };
+  const ctxLevel = (p) => (p < 30 ? 'ctx-low' : p < 60 ? 'ctx-mid' : 'ctx-high');  // as in the extension
 
   // ---- state + rendering ---------------------------------------------------------------------------
   let S;
@@ -21,9 +22,9 @@
 
   function rowHTML(s, indent) {
     const isNew = !seen.has('row' + s.id); seen.add('row' + s.id);
-    const meta = s.h === 'pi' ? `pi · ${s.repo}` : `${s.repo} · ${s.ctx}% ctx`;
+    const meta = s.h === 'pi' ? esc(`pi · ${s.repo}`) : `${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}% ctx</span>`;
     return `<div class="row st-${s.state}${S.sel === s.id ? ' sel' : ''}${indent ? ' in' : ''}${isNew ? ' fade' : ''}" data-id="${s.id}">`
-      + `<span class="g">${GLYPH[s.state]}</span><b>${esc(s.name)}</b><em>${esc(meta)}</em></div>`;
+      + `<span class="g">${GLYPH[s.state]}</span><b>${esc(s.name)}</b><em>${meta}</em></div>`;
   }
   function renderSide() {
     const cc = S.sessions.filter((s) => s.h === 'cc'), pi = S.sessions.filter((s) => s.h === 'pi');
@@ -59,7 +60,7 @@
       Object.assign(el.style, { left: p.x + '%', top: p.y + '%', width: p.w + '%' });
       const chain = !s.parent && kids(s.id).length && S.chain ? `<div class="ch">${esc(S.chain)}</div>` : '';
       el.innerHTML = `<div class="st">${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
-        + `<div class="meta">${esc(s.repo)} · ${s.ctx}%</div>${chain}`;
+        + `<div class="meta">${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}%</span></div>${chain}`;
     }
     let d = '';
     for (const s of S.sessions.filter((x) => x.h === 'cc' && x.parent)) {
@@ -245,6 +246,7 @@
       await tab('api');
       await set('api', { blink: false, ctx: 41 });
       await say('↻ Resumed in place: same session, same terminal, same group', 'dim', 700);
+      await set('lead', { ctx: 71 });  // a long-running parent: time to compact (the red ctx badge)
       await point(`.row[data-id="lead"]`, 0.4); await tab('lead'); await key('c');
       await say('✓ Compacted · lead is still the parent of api, ui and reviewer', 'ok', 500);
       await set('lead', { ctx: 9 });
@@ -269,16 +271,23 @@
     FF = true; const chainRuns = SCENES.slice(0, i).reduce((p, s) => p.then(s.run), Promise.resolve());
     return chainRuns.then(() => { FF = false; stage.querySelectorAll('.fade').forEach((e) => e.classList.remove('fade')); seen.clear(); render(); stage.querySelectorAll('.fade').forEach((e) => e.classList.remove('fade')); });
   }
+  function halt() { // stop the timeline and clear anything a scene left mid-animation
+    token++;
+    ['.qp', '.ctx', '.tip', '.toast', '.keycap'].forEach((s) => { $(s).hidden = true; });
+    stage.querySelectorAll('.ghost').forEach((g) => g.remove());
+    stage.querySelectorAll('.drop').forEach((r) => r.classList.remove('drop'));
+    ptr.classList.remove('down'); hidePtr();
+  }
   async function play(i, auto) {
+    halt();  // bumps token: anything still playing aborts
     const t = ++token; cur = i; caption(i);
-    ['.qp', '.ctx', '.tip', '.toast', '.keycap'].forEach((s) => { $(s).hidden = true; }); hidePtr();
     await resetTo(i); live(t);
     if (REDUCED && !RECORD) { FF = true; await SCENES[i].run(); FF = false; render(); return; }
     await wait(500, t);
     await SCENES[i].run(); live(t);
     if (RECORD) { await wait(800, t); window.__done = true; return; }
     await wait(1600, t);
-    if (auto && playing) play((i + 1) % SCENES.length, true).catch(() => {});
+    if (auto && playing) start((i + 1) % SCENES.length, true);
   }
   const start = (i, auto) => play(i, auto).catch((e) => { if (e !== ABORT) throw e; });
   list.addEventListener('click', (e) => {
@@ -287,7 +296,7 @@
   });
   playBtn.addEventListener('click', () => {
     playing = !playing; playBtn.textContent = playing ? '❚❚ Pause' : '▶ Play';
-    if (playing) start(cur, true); else token++;
+    if (playing) start(cur, true); else halt();
   });
   playBtn.textContent = playing ? '❚❚ Pause' : '▶ Play';
   if (REDUCED) playBtn.hidden = true;
@@ -298,7 +307,7 @@
   new IntersectionObserver((es) => {
     const v = es[0].isIntersecting;
     if (v && !visible && playing) start(cur, true);
-    if (!v && visible) token++; // pause off screen; resumes the current scene from its start
+    if (!v && visible) halt(); // pause off screen; resumes the current scene from its start
     visible = v;
   }, { threshold: 0.35 }).observe(tut);
 })();
