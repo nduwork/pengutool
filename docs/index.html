@@ -43,10 +43,10 @@
     </section>
 
     <section class="tutorial wrap" id="tutorial" aria-labelledby="tut-h">
-      <div class="section-intro"><span class="eyebrow">SEE IT IN ACTION</span><h2 id="tut-h">From install to a working pool.</h2><p>Seven short scenes, played on the real layout: one parent, three children, one request routed through the tree.</p></div>
+      <div class="section-intro"><span class="eyebrow">SEE IT IN ACTION</span><h2 id="tut-h">From install to a working pool.</h2><p>Seven short scenes, played on the real layout: a lead in the monorepo that manages the apps, with the backend, frontend and deployment repos as its children, and one request routed through the tree.</p></div>
       <div class="tut" id="tut">
-        <div class="ide" id="stage" role="img" aria-label="Animated walkthrough of the PenguPool extension in Cursor; the caption below describes each scene">
-          <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop-app — Cursor</span><span></span></div>
+        <div class="ide" id="stage" role="img" aria-label="Animated walkthrough of the PenguPool extension in Cursor: a monorepo lead session with backend, frontend and deployment child sessions; the caption below describes each scene">
+          <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop — Cursor</span><span></span></div>
           <div class="ide-body">
             <div class="ide-activity" aria-hidden="true"><span>⧉</span><span>⌕</span><span>⑂</span><span class="on"><img src="assets/penguin.svg" alt=""></span></div>
             <div class="ide-side"></div>
@@ -100,7 +100,7 @@
         <article><span class="step">1</span><h3>Tell the parent about every new child</h3><p>After you add and group a session, tell its parent it exists and how you plan to use it. Then give the child its job.</p><pre class="snip">I added api under you. It owns the REST endpoints in server/. Route API work to it and keep planning and review yourself.</pre></article>
         <article><span class="step">2</span><h3>Check each role, edit when needed</h3><p>Roles are automatic: a new session is told <code>ROLE REQUIRED</code> until it describes itself, routing keywords included. Hover a row to review it. Right-click → <b>Describe Role…</b> to edit the summary and brief, or set keywords yourself.</p><pre class="snip">pengupool ctl describe &lt;id&gt; --keywords "api, endpoint, auth"</pre></article>
         <article><span class="step">3</span><h3>Talk to the top, let triage route</h3><p>Prompt the root session and read the <code>Triage:</code> line that starts each reply. To keep one task local, say so.</p><pre class="snip">Fix the login copy typo. Do it yourself.</pre></article>
-        <article><span class="step">4</span><h3>Use @session for a one-off direct line</h3><p>Tagging a session lets the one you typed into message it directly until your next prompt, without regrouping anything.</p><pre class="snip">@reviewer check the diff in api before I merge.</pre></article>
+        <article><span class="step">4</span><h3>Use @session for a one-off direct line</h3><p>Tagging a session lets the one you typed into message it directly until your next prompt, without regrouping anything.</p><pre class="snip">@payments will token refresh log users out of checkout?</pre></article>
         <article><span class="step">5</span><h3>Pick folder or worktree on purpose</h3><p>Use the same folder for reviewers, readers or a second pair of hands, even when a session already runs there. Use a worktree when two sessions edit the same files.</p></article>
         <article><span class="step">6</span><h3>Keep the tree intact</h3><p>Compact with <kbd>c</kbd> or <code>/compact</code>. <code>/new</code> and <code>/clear</code> start a new session, which leaves the group. After a Claude Code or pi update, press <kbd>Shift</kbd>+<kbd>R</kbd> to restart in place.</p></article>
       </div>
@@ -111,7 +111,7 @@
       <div class="section-intro"><span class="eyebrow">BUILT FOR MANY MOVING PARTS</span><h2>Keep the whole pool in sight.</h2><p>PenguPool makes local agent work easier to follow while the agents keep running in their own sessions.</p></div>
       <div class="feature-grid">
         <article><div class="feature-icon">⌘</div><h3>Switch without starting over</h3><p>Open live tmux sessions from any editor window. Close the editor and come back to the same work.</p></article>
-        <article><div class="feature-icon">⑂</div><h3>Route work, not guesses</h3><p>Group sessions into a tree. Messages go only one edge at a time, and tagging <code>@reviewer</code> in a prompt opens a direct line until your next one.</p></article>
+        <article><div class="feature-icon">⑂</div><h3>Route work, not guesses</h3><p>Group sessions into a tree. Messages go only one edge at a time, and tagging <code>@payments</code> in a prompt opens a direct line until your next one.</p></article>
         <article><div class="feature-icon">◎</div><h3>Give each session room</h3><p>Start in the same folder as other sessions or in an isolated git worktree, describe each session's role and routing keywords, and track its current phase.</p></article>
       </div>
     </section>

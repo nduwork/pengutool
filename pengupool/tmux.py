@@ -183,6 +183,13 @@ HINT = {"status-position": "top", "status-style": "default", "status-left": "", 
         "window-status-current-format": "", "status-right": "#[fg=black,bg=yellow,bold] Text copied "}
 
 
+# True when the copy-mode selection spans at least 2 characters or more than one line. tmux has no abs(),
+# so both drag directions are checked.
+MIN_SELECTION = ("#{||:#{!=:#{selection_start_y},#{selection_end_y}},"
+                 "#{||:#{e|>=|:#{e|-|:#{selection_end_x},#{selection_start_x}},1},"
+                 "#{e|>=|:#{e|-|:#{selection_start_x},#{selection_end_x}},1}}}")
+
+
 def enable_mouse_copy(h: str = "cc") -> None:
     """Drag-select in the work pane auto-copies to the macOS clipboard, mouse staying on for
     scroll/click. tmux enters copy-mode on a left-drag; on release we pipe the selection to pbcopy
@@ -198,11 +205,13 @@ def enable_mouse_copy(h: str = "cc") -> None:
     # "no such session"), so the bound set-option has no -t: it acts on the pressing client's own view
     # session. run-shell does expand its command, so the delayed hide can name that session.
     hide_status = f"sleep 2; tmux -L {harness.SOCK[h]} set-option -t '#{{session_name}}' status off"
+    copy = f'send-keys -X copy-pipe-and-cancel pbcopy ; set-option status on ; run-shell -b "{hide_status}"'
     for table in ("copy-mode", "copy-mode-vi"):
+        # A click that wobbles a pixel is a drag too: copying its 1-character "selection" would replace
+        # the user's clipboard (they click into the chat, then Cmd+V pastes nothing useful). Copy only
+        # a real selection; otherwise just leave copy-mode with the clipboard untouched.
         _ok("bind-key", "-T", table, "MouseDragEnd1Pane",
-            "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy", "\\;",
-            "set-option", "status", "on", "\\;",
-            "run-shell", "-b", hide_status, h=h)
+            "if-shell", "-F", MIN_SELECTION, copy, "send-keys -X cancel", h=h)
 
 
 
