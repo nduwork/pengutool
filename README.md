@@ -46,7 +46,7 @@ cd extension && npm ci && npm test && npm run compile
 
 `pengupool serve --once` emits one JSON snapshot for integrations. `pengupool ctl --help` lists control commands. To propose a change, use a fork and pull request; see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
-Version tags trigger the GitHub Actions release workflow. It builds and attaches the Python wheel, source archive, and editor VSIX to the GitHub Release. Build outputs are kept in the CI runner's temporary directory, not in the repository.
+Each successful CI run offers a downloadable build artifact containing the Python wheel, source archive, and editor VSIX. Version tags trigger the GitHub Actions release workflow, which attaches those builds to a GitHub Release. Build outputs stay in the CI runner's temporary directory, not in the repository.
 
 ## Limits
 

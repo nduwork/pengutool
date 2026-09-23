@@ -29,3 +29,10 @@ jobs:
         working-directory: extension
       - run: npm run package -- --out "$RUNNER_TEMP/pengupool-ci.vsix"
         working-directory: extension
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pengupool-build
+          path: |
+            ${{ runner.temp }}/pengupool-dist/*
+            ${{ runner.temp }}/pengupool-ci.vsix
+          if-no-files-found: error
