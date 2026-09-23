@@ -4,6 +4,10 @@
 
 [Website](https://pengupool.nduwork.com) · [VS Code extension](extension/README.md) · [Contributing](.github/CONTRIBUTING.md) · [MIT license](LICENSE)
 
+![PenguPool routing a request from the lead session to its children](docs/assets/tutorial/5-ask-the-top.gif)
+
+Watch all seven scenes on the [website](https://pengupool.nduwork.com/#tutorial), or read the [demo script](docs/tutorial-script.md).
+
 ## Install
 
 One command installs the latest release: the `pengupool` CLI, the wiring for every installed harness (Claude Code, pi), the workflow tracker, and the extension in every VS Code and Cursor it finds.
