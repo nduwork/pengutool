@@ -51,3 +51,20 @@ def test_permission_request_marks_blocked(tmp_path, monkeypatch):
     assert model.load_sessions()[0]["state"] == "blocked"          # blocked on a permission prompt
     model.write_json(model.AGENT_STATE / f"{sid}.json", {"event": "PostToolUse"})
     assert model.load_sessions()[0]["state"] == "active"           # a later event clears it
+
+
+def test_guard_fails_closed_on_a_file_torn_in_a_fresh_process(tmp_path, monkeypatch):
+    """A one-shot hook process has no last-good cache: a session file caught mid-write must not make
+    its session vanish from the tree (that would let the routing guard wave a send through)."""
+    import pytest
+    from pengupool import routing
+    monkeypatch.setattr(model, "CLAUDE", tmp_path)
+    monkeypatch.setattr(model, "PENGU", tmp_path / "pengu")
+    monkeypatch.setattr(model, "GROUPS", tmp_path / "pengu" / "groups.json")
+    (tmp_path / "sessions").mkdir()
+    monkeypatch.setattr(model, "pid_alive", lambda *a, **k: True)
+    model._SESSION_CACHE.clear()
+    (tmp_path / "sessions" / "12345.json").write_text('{"sessionId": "abcdef12-')  # being rewritten now
+    assert model.load_sessions() == [] and model.TORN
+    with pytest.raises(RuntimeError, match="mid-write"):
+        routing.live_tree()

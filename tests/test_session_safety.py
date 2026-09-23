@@ -171,3 +171,33 @@ def test_extension_view_cleanup_removes_only_detached_stale_views(monkeypatch):
     monkeypatch.setattr(tmux, "_ok", lambda *args, **k: killed.append(args) or True)
     tmux.cleanup_extension_views("pv-ext-current")
     assert killed == [("kill-session", "-t", "=pv-ext-old")]
+
+
+def test_stop_does_not_claim_success_on_someone_elses_pid(monkeypatch):
+    def kill(pid, sig):
+        raise PermissionError(1, "Operation not permitted")
+    monkeypatch.setattr(tmux.os, "kill", kill)
+    assert tmux.stop(4242) is False
+
+
+def test_ps_runs_in_the_c_locale(monkeypatch):
+    seen = {}
+
+    def run(args, **kw):
+        seen.update(kw.get("env") or {})
+        return type("R", (), {"stdout": ""})()
+    monkeypatch.setattr(model.subprocess, "run", run)
+    model.ProcTable().refresh()
+    assert seen.get("LC_ALL") == "C"
+
+
+def test_write_json_keeps_a_symlink_and_its_mode(tmp_path):
+    real = tmp_path / "dotfiles" / "settings.json"
+    real.parent.mkdir()
+    real.write_text("{}")
+    real.chmod(0o600)
+    link = tmp_path / "settings.json"
+    link.symlink_to(real)
+    model.write_json(link, {"a": 1})
+    assert link.is_symlink() and json.loads(real.read_text()) == {"a": 1}
+    assert real.stat().st_mode & 0o777 == 0o600

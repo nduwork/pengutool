@@ -23,7 +23,8 @@ Verbs:
     context <sid> [--prompt-stdin]  print the session-tree context block for a session (used by the pi
                                   extension); with the user's prompt on stdin, its @session tags are
                                   recorded first and let the session message those sessions directly
-    register <sid> <cwd>          create/refresh a session's profile (workspace scan; used by the pi extension)
+    slash <sid> compact | rename <name>  type the slash command into the session's own pane (user only)
+    register <sid> <cwd> [--key-stdin]  create/refresh a session's profile (workspace scan; used by the pi extension)
     describe <sid> [--summary S] [--responsibility R] [--keywords "a, b"]
                                   set what a session owns; allowed from the session itself, its parent, or the user
     profile <sid>                 JSON profile of a session (summary, responsibility, workspace, who edited it)
@@ -34,6 +35,8 @@ Verbs:
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 
 from . import harness, model, profiles, routing
@@ -86,6 +89,9 @@ def _new(directory: str, name: str, json_output: bool = False, view_id: str = ""
 def _resume(directory: str, name: str, sid: str, json_output: bool = False,
             view_id: str = "") -> int:
     from . import tmux
+    if not re.fullmatch(r"[0-9A-Za-z][\w-]*", sid):  # it becomes agent argv: never let "-…" read as a flag
+        print(f"invalid session id: {sid!r}", file=sys.stderr)
+        return 2
     reg, sessions = _index()
     if sid in sessions:
         h = harness.of(sessions[sid])
@@ -160,7 +166,8 @@ def restart(sid: str) -> tuple[str, str]:
         return "", f"{harness.LABEL[h]} has not written this session's transcript yet; send it a prompt first"
     if not tmux.hold(pane, h):
         return "", "could not keep the session's pane open; not restarting"
-    tmux.stop(pid)
+    if not tmux.stop(pid):
+        return "", f"could not stop {harness.LABEL[h]} (pid {pid}); not restarting"
     if not tmux.start_reserved(pane, cwd, name, sid, h):
         return "", f"could not restart {harness.LABEL[h]} in pane {pane}; resume session {sid} manually"
     return pane, ""
@@ -204,16 +211,26 @@ def _close(sid: str) -> int:
 
 
 def _group(child: str, parent: str) -> int:
-    err = model.group_error(child, parent, model.load_sessions(), model.load_groups())
-    if err:
-        print(err, file=sys.stderr)
+    # Grouping decides who may message whom, so only the user (the editor, or a terminal outside any
+    # session) regroups: a session that could re-parent itself or others would lift the routing rule.
+    try:
+        if profiles.caller():
+            print("sessions cannot regroup; ask the user to drag the row in the PenguPool view", file=sys.stderr)
+            return 2
+    except PermissionError as e:
+        print(e, file=sys.stderr)
         return 2
-    groups = model.load_groups()
-    if parent:
-        groups[child] = parent
-    else:
-        groups.pop(child, None)          # "" = top level: forget any manual parent
-    model.save_groups(groups)
+    with model.locked(model.GROUPS):  # one read-modify-write at a time: concurrent regroups both land
+        groups = model.load_groups()
+        err = model.group_error(child, parent, model.load_sessions(), groups)
+        if err:
+            print(err, file=sys.stderr)
+            return 2
+        if parent:
+            groups[child] = parent
+        else:
+            groups.pop(child, None)          # "" = top level: forget any manual parent
+        model.save_groups(groups)
     return 0
 
 
@@ -228,13 +245,54 @@ def _past(directory: str) -> int:
     return 0
 
 
+def _slash(sid: str, what: str, name: str = "") -> int:
+    """Compact or rename a session by typing its slash command into its own pane. User-only: a session
+    that could type into another session's pane would bypass the routing rule entirely."""
+    from . import tmux
+    try:
+        if profiles.caller():
+            print("sessions cannot type into other sessions", file=sys.stderr)
+            return 2
+    except PermissionError as e:
+        print(e, file=sys.stderr)
+        return 2
+    reg, sessions = _index()
+    s = sessions.get(sid)
+    pane = _session_pane(sid, reg, sessions) if s else ""
+    if not pane:
+        print(f"session {sid} is not in a PenguPool tmux pane", file=sys.stderr)
+        return 2
+    h = harness.of(s)
+    if what == "compact" and not name:
+        text = "/compact"
+    elif what == "rename" and re.fullmatch(r"[^\x00-\x1f\x7f]{1,80}", name):  # one printable line
+        text = f"{harness.RENAME[h]} {name}"
+    else:
+        print("usage: pengupool ctl slash <sid> compact | rename <name>", file=sys.stderr)
+        return 2
+    return 0 if tmux.slash(pane, text, h) else 1
+
+
+def _register(sid: str, cwd: str, opt: str = "") -> int:
+    profiles.register(sid, cwd)
+    if opt == "--key-stdin":  # the pi extension's in-memory secret, on stdin so no `ps eww` can read it
+        key = sys.stdin.readline().strip()
+        if not routing.register_key(sid, key, os.getppid()):  # ppid: the pi process that holds the key
+            print("grant key already held by a live process; @tags will not grant for this caller", file=sys.stderr)
+    return 0
+
+
 def _context(sid: str, opt: str = "") -> int:
     from .context import text_for
-    if opt not in ("", "--prompt-stdin"):
-        print("usage: pengupool ctl context <sid> [--prompt-stdin]", file=sys.stderr)
+    if opt not in ("", "--prompt-stdin", "--keyed-prompt-stdin"):
+        print("usage: pengupool ctl context <sid> [--prompt-stdin | --keyed-prompt-stdin]", file=sys.stderr)
         return 2
     s = next((s for s in model.load_sessions() if s["sessionId"] == sid), {})
-    print(text_for(sid, h=harness.of(s), prompt=sys.stdin.read() if opt else None))
+    # @tags in the prompt grant a direct line only when the pi extension's secret leads stdin: an agent
+    # running this from its own shell cannot lift the routing rule by piping in "@other".
+    key = sys.stdin.readline().strip() if opt == "--keyed-prompt-stdin" else ""
+    prompt = sys.stdin.read() if opt else None
+    print(text_for(sid, h=harness.of(s), prompt=prompt, grant=routing.key_ok(sid, key)))
     return 0
 
 
@@ -327,7 +385,10 @@ def main(argv: list[str] | None = None) -> int:
         ("past", 1): lambda: _past(a[0]),
         ("context", 1): lambda: _context(a[0]),
         ("context", 2): lambda: _context(a[0], a[1]),
-        ("register", 2): lambda: (profiles.register(a[0], a[1]), 0)[1],
+        ("slash", 2): lambda: _slash(a[0], a[1]),
+        ("slash", 3): lambda: _slash(a[0], a[1], a[2]),
+        ("register", 2): lambda: _register(a[0], a[1]),
+        ("register", 3): lambda: _register(a[0], a[1], a[2]),
         ("profile", 1): lambda: _profile(a[0]),
         ("tree", 1): lambda: _tree(a[0]),
         ("route", 2): lambda: _route(a[0], a[1]),

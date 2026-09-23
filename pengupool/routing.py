@@ -6,11 +6,13 @@ parent or a direct child; anything further is routed one edge at a time.
 extension's `tool_call` handler on pi-intercom sends (`pengupool ctl authorize`)."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from . import model
 
@@ -22,6 +24,7 @@ class Tree:
     children: dict[str, list[str]]
     name: dict[str, str]
     harness: dict[str, str]
+    sock: dict[str, str] = field(default_factory=dict)  # "uds:<messagingSocketPath>" -> session id
 
 
 def live_tree() -> Tree:
@@ -29,6 +32,8 @@ def live_tree() -> Tree:
     if groups.exists():  # fail closed: a torn/hand-broken groups.json must not read as "no groups"
         json.loads(groups.read_text())
     roots, _, _ = model.snapshot(light=True)
+    if model.TORN:  # fail closed: a session file caught mid-write must not make its session vanish
+        raise RuntimeError(f"session file mid-write: {model.TORN[0]}")
     t = Tree({}, {}, {}, {})
 
     def walk(n: model.Node, parent: str | None):
@@ -42,6 +47,9 @@ def live_tree() -> Tree:
             walk(c, n.session_id)
     for r in roots:
         walk(r, None)
+    for s in model.load_sessions():  # Claude also addresses peers by socket: `uds:<messagingSocketPath>`
+        if isinstance(s.get("messagingSocketPath"), str) and s["sessionId"] in t.parent:
+            t.sock[f"uds:{s['messagingSocketPath']}"] = s["sessionId"]
     return t
 
 
@@ -50,8 +58,10 @@ def resolve(t: Tree, sender: str, recipient: str) -> set[str]:
     r = re.sub(r"\s*\[.*\]$", "", str(recipient)).strip()
     h = t.harness.get(sender)
     same = [s for s in t.name if t.harness[s] == h]
+    if r.startswith("uds:"):
+        return {t.sock[r]} if t.sock.get(r) in same else set()
     by_id = {s for s in same if s == r or (len(r) >= 8 and s.startswith(r))}
-    return by_id or {s for s in same if t.name[s].split("~")[0] == r}
+    return by_id or {s for s in same if t.name[s].split("~")[0].casefold() == r.casefold()}
 
 
 def adjacent(t: Tree, sid: str) -> list[str]:
@@ -76,6 +86,36 @@ def route(t: Tree, current: str, target: str) -> str:
 
 
 GRANTS = model.PENGU / "grants"  # <sid>.json = {"targets": [sid, ...], "ts": epoch}
+KEYS = model.PENGU / "grant-keys"  # <sid>.json = {"sha256": hex, "holder": pid}: who may record @-grants
+
+
+def _digest(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def register_key(sid: str, token: str, holder: int) -> bool:
+    """The pi extension keeps a random secret in memory and registers its hash at session start. A key is
+    replaced only once its holder process is gone (a restart), so an agent's own shell cannot swap in
+    its own. Claude sessions need none: their grants come only from Claude's prompt hook."""
+    if not re.fullmatch(r"[\w.-]{1,128}", sid) or len(token) < 32:
+        return False
+    p = KEYS / f"{sid}.json"
+    cur = model._json(p) or {}
+    held = cur.get("holder")
+    if isinstance(held, int) and model.pid_alive(held):  # even the same pid: `bash -c` can exec as it
+        return hmac.compare_digest(str(cur.get("sha256", "")), _digest(token))
+    model.write_json(p, {"sha256": _digest(token), "holder": holder})
+    return True
+
+
+def key_ok(sid: str, token: str) -> bool:
+    """True when `token` is the registered secret of sid's pi extension (so this prompt is the user's)."""
+    # ponytail: same-uid isolation only; an agent that reads process memory or rewrites the key file
+    # after killing the holder can still forge. Upgrade path: an OS keychain or a per-user socket.
+    if not token or not re.fullmatch(r"[\w.-]{1,128}", sid):
+        return False
+    d = model._json(KEYS / f"{sid}.json") or {}
+    return hmac.compare_digest(str(d.get("sha256", "")), _digest(token))
 GRANT_TTL = 3600
 MENTION = re.compile(r"(?<![\w.@])@([\w][\w.~-]*)")  # @name / @id, not an email address
 
@@ -123,10 +163,16 @@ def authorize_send(sender: str, recipient: str, t: Tree | None = None) -> tuple[
     t = t or live_tree()
     if sender not in t.parent or not adjacent(t, sender):
         return True, ""
+    ok = adjacent(t, sender)
+    if not recipient.strip():  # e.g. pi-intercom's send by cwd: no name to check, so no free pass
+        who = ", ".join(t.name[s] for s in ok)
+        return False, f"PenguPool: name the session you are messaging (to=…); you may message: {who}."
     hits = resolve(t, sender, recipient)
+    if not hits and str(recipient).strip().startswith("uds:"):  # a session address we cannot map: refuse
+        who = ", ".join(t.name[s] for s in ok)
+        return False, f"PenguPool: {recipient} is not a session you may message; message by name: {who}."
     if not hits:
         return True, ""
-    ok = adjacent(t, sender)
     if len(hits) == 1 and (next(iter(hits)) in ok or granted(sender, next(iter(hits)))):
         return True, ""
     who = ", ".join(f"{'parent' if s == t.parent.get(sender) else 'child'} {t.name[s]}" for s in ok)

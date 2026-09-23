@@ -12,6 +12,7 @@
 //    PenguPool failing to answer, blocks it (the same rule Claude's SendMessage guard applies)
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { execFile } from "node:child_process"
+import * as crypto from "node:crypto"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -19,6 +20,9 @@ import * as path from "node:path"
 const HOME = process.env.PENGUPOOL_HOME || path.join(os.homedir(), ".pengupool")
 const LIVE = path.join(HOME, "pi-sessions", `${process.pid}.json`)
 const CLI = process.env.PENGUPOOL_CLI || "pengupool"
+// Proves to `ctl context` that a prompt is the user's (its @tags may grant a direct line). It lives only in
+// this process and goes to ctl on stdin, never in env or argv, so tools the agent runs can't see it.
+const GRANT_KEY = crypto.randomBytes(24).toString("hex")
 const run = (args: string[], input = "") => new Promise<{ code: number; out: string; err: string }>((resolve) => {
   const child = execFile(CLI, args, { timeout: 3000 }, (e: any, out, err) =>
     resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(out).trim(), err: String(err).trim() }))
@@ -65,7 +69,7 @@ export default function (pi: ExtensionAPI) {
     // also fires after /new, /resume and /fork: the same process now hosts a different session
     const sessionId = ctx.sessionManager.getSessionId()
     process.env.PENGUPOOL_SESSION = sessionId  // tools this session runs inherit it: ctl knows who is calling
-    void run(["ctl", "register", sessionId, ctx.cwd])
+    await run(["ctl", "register", sessionId, ctx.cwd, "--key-stdin"], `${GRANT_KEY}\n`)  // before the first prompt
     update({ sessionId, cwd: ctx.cwd, name: pi.getSessionName() || "", status: "idle",
              sessionFile: ctx.sessionManager.getSessionFile() })
     try {
@@ -85,12 +89,14 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     if (!live.sessionId) return
     // the user's prompt goes along: its @session tags lift the adjacent rule for those sessions
-    const r = await run(["ctl", "context", String(live.sessionId), "--prompt-stdin"], String(event.prompt || ""))
+    const r = await run(["ctl", "context", String(live.sessionId), "--keyed-prompt-stdin"],
+                        `${GRANT_KEY}\n${String(event.prompt || "")}`)
     if (!r.code && r.out) return { systemPrompt: `${event.systemPrompt}\n\n${r.out}` }
   })
   pi.on("tool_call", async (event: any) => {
     const input = event.input || {}
     if (event.toolName !== "intercom" || !["send", "ask"].includes(input.action) || !live.sessionId) return
+    // A send by cwd alone names no session: authorize gets "" and refuses it for a grouped session.
     const r = await run(["ctl", "authorize", String(live.sessionId), String(input.to || "")])
     if (r.code) {
       return { block: true, reason: r.code === 3 ? r.err
