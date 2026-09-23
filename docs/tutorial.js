@@ -44,7 +44,7 @@
     const pos = {}; let start = 0;
     roots.forEach((r, i) => {
       const x0 = 4 + (start / total) * 92, span = (units[i] / total) * 92, ks = kids(r.id);
-      pos[r.id] = { x: x0 + span / 2, y: ks.length ? 10 : 36, w: ks.length ? Math.min(56, w * 1.9) : w };
+      pos[r.id] = { x: x0 + span / 2, y: ks.length ? 10 : 36, w: ks.length ? Math.min(60, w * 2.5) : w };  // room for the chain
       ks.forEach((k, j) => { pos[k.id] = { x: x0 + span * (j + 0.5) / ks.length, y: 62, w }; });
       start += units[i];
     });
@@ -168,13 +168,15 @@
   async function toast(text, ms = 1400) { const t = $('.toast'); if (FF) return; t.textContent = text; t.hidden = false; await wait(ms); t.hidden = true; }
 
   // ---- the scenes (docs/tutorial-script.md) --------------------------------------------------------
-  const newSession = async (name, where, harness, s) => {
+  const newSession = async (name, folder, where, harness, s) => {
     await key('n');
+    await input('Folder for the new session', folder);
     await input('Session name', name);
     await pick('Choose where to start the session', [['Create a worktree', 'isolated branch for this session'], ['Use selected folder', 'no new worktree · fine if a session already runs here']], where === 'worktree' ? 0 : 1);
     await pick('Choose the agent harness', [['Claude Code'], ['pi']], harness === 'pi' ? 1 : 0);
     await add({ name, id: name, h: harness, ...s });
   };
+  // The cast: `lead` runs in the monorepo that manages the apps; each child owns one app in its own repo.
   const SCENES = [
     { t: 'Install', p: 'One command installs the backend, the harness wiring and the editor extension.', run: async () => {
       await tab('zsh');
@@ -183,60 +185,63 @@
         await say(esc(l), l.startsWith('✓') ? 'ok' : 'dim', 330);
       await say('Done. Reload your editor window, then open the PenguPool view.', 'dim', 900);
     } },
-    { t: 'Start a pool', p: 'Press n for each session: pick the folder or a new worktree, and the harness.', run: async () => {
+    { t: 'Start a pool', p: 'Press n for each session: pick its repo, a new worktree or the folder itself, and the harness.', run: async () => {
       await point('.ide-side', 0.5, 0.25);
-      await newSession('lead', 'folder', 'cc', { repo: 'shop-app', ctx: 6 });
+      await newSession('lead', '~/code/shop', 'folder', 'cc', { repo: 'shop', ctx: 6 });
       await tab('lead');
-      await newSession('api', 'worktree', 'cc', { repo: 'shop-app-wt-api', ctx: 3 });
-      await add({ name: 'ui', id: 'ui', h: 'cc', repo: 'shop-app', ctx: 3 });
-      await add({ name: 'reviewer', id: 'reviewer', h: 'cc', repo: 'shop-app', ctx: 2 });
-      await newSession('docs-writer', 'folder', 'pi', { repo: 'shop-app', state: 'waiting', ctx: 2 });
+      await newSession('api', '~/code/shop-api', 'worktree', 'cc', { repo: 'shop-api-wt-token', ctx: 3 });
+      await newSession('web', '~/code/shop-web', 'folder', 'cc', { repo: 'shop-web', ctx: 3 });
+      await add({ name: 'deploy', id: 'deploy', h: 'cc', repo: 'shop-deploy', ctx: 2 });
+      await add({ name: 'payments', id: 'payments', h: 'cc', repo: 'shop-payments', state: 'waiting', ctx: 5 });  // stays ungrouped
+      await newSession('docs-writer', '~/code/shop', 'folder', 'pi', { repo: 'shop', state: 'waiting', ctx: 2 });
       S.sel = 'lead'; render(); hidePtr();
     } },
-    { t: 'Group the children', p: 'Drag each child onto its parent. The map becomes the tree every session sees.', run: async () => {
-      await drag('api', 'lead'); await drag('ui', 'lead'); await drag('reviewer', 'lead');
+    { t: 'Group the children', p: 'Drag each app session onto the monorepo lead; payments stays on its own. The map becomes the tree every session sees.', run: async () => {
+      await drag('api', 'lead'); await drag('web', 'lead'); await drag('deploy', 'lead');
       S.sel = 'lead'; render(); hidePtr(); await wait(600);
     } },
     { t: 'Brief the parent', p: 'Tell the parent about every new child and how you plan to use it.', run: async () => {
       if (S.tab !== 'lead') await tab('lead');
-      await type('I added api, ui and reviewer under you. api owns the REST endpoints in server/, ui the login form, reviewer reviews diffs. Route work to them.');
+      await type('I added api, web and deploy under you. api owns the backend (shop-api), web the frontend (shop-web), deploy the deployment (shop-deploy). Route work to them.');
       await say('<span class="dot">⏺</span> Triage: mine', '', 450);
-      await say('<span class="dot">⏺</span> Got it: API work → api, form work → ui, diffs → reviewer. I keep planning.', '', 700);
-      for (const [id, ctx] of [['api', 9], ['ui', 8], ['reviewer', 6]]) find(id).ctx = ctx;
+      await say('<span class="dot">⏺</span> Got it: backend → api, frontend → web, releases → deploy. I keep the monorepo and the plan.', '', 700);
+      for (const [id, ctx] of [['api', 9], ['web', 8], ['deploy', 6]]) find(id).ctx = ctx;
       find('lead').ctx = 14; render();
-      await tip('api', '<b>api</b><br>REST endpoints in server/<br><em>set by the session (ROLE REQUIRED)</em>');
+      await tip('api', '<b>api</b><br>Backend: the shop-api service<br><em>set by the session (ROLE REQUIRED)</em>');
       hidePtr();
     } },
-    { t: 'Ask the top', p: 'Talk to the top. Triage routes each part to the child that owns it.', run: async () => {
+    { t: 'Ask the top', p: 'Talk to the top. Triage routes each part to the repo session that owns it.', run: async () => {
       if (S.tab !== 'lead') await tab('lead');
       await type('Add token refresh to login.');
-      await say('<span class="dot">⏺</span> Triage: → api, ui', '', 350);
-      await say('  ⎿ SendMessage api · SendMessage ui', 'dim', 200);
+      await say('<span class="dot">⏺</span> Triage: → api, web', '', 350);
+      await say('  ⎿ SendMessage api · SendMessage web', 'dim', 200);
       await log('lead', 'api', 'add the token refresh endpoint', 'lg');
       await set('api', { ctx: 24 });
-      await log('lead', 'ui', 'wire refresh into the login form', 'lg');
-      await set('ui', { state: 'active', ctx: 19 });
-      await chain('[ship-auth] api ● → ui ○ → review ○');
+      await log('lead', 'web', 'wire refresh into the login form', 'lg');
+      await set('web', { state: 'active', ctx: 19 });
+      await chain('[ship-auth] api ● → web ○ → deploy ○');
       await wait(900);
       await log('api', 'lead', 'endpoint done, tests pass', 'lb');
       await set('api', { state: 'waiting', ctx: 41 });
-      await chain('[ship-auth] api ✓ → ui ● → review ○');
-      await say('<span class="dot">⏺</span> api is done. Waiting on ui, then review.', '', 900);
+      await chain('[ship-auth] api ✓ → web ● → deploy ○');
+      await say('<span class="dot">⏺</span> api is done. Waiting on web, then deploy to staging.', '', 900);
     } },
-    { t: 'Direct line and approvals', p: 'Tag @session for a one-off direct line. Approval badges show who is waiting on you.', run: async () => {
-      await tab('ui');
-      await type('@reviewer check my form diff.');
-      await log('ui', 'reviewer', 'can you check the form diff?', 'lo');
-      await set('reviewer', { state: 'blocked', ctx: 22 });
-      await chain('[ship-auth] api ✓ → ui ✓ → review ●');
-      await set('ui', { state: 'waiting', ctx: 33 });
-      await click(`.card[data-id="reviewer"]`);
-      await tab('reviewer');
-      await say('<span class="warn">Allow Bash(npm test)?</span>', '', 300);
+    { t: 'Direct line and approvals', p: 'Tag @session to reach a session outside your tree for one prompt. Approval badges show who is waiting on you.', run: async () => {
+      await tab('web');
+      await type('@payments will token refresh log users out of checkout?');
+      await log('web', 'payments', 'will token refresh end checkout sessions?', 'lo');
+      await log('payments', 'web', 'no: checkout re-reads the token on each call', 'lo');
+      await set('web', { state: 'waiting', ctx: 33 });
+      await chain('[ship-auth] api ✓ → web ✓ → deploy ●');
+      await log('lead', 'deploy', 'ship shop-api and shop-web to staging', 'lg');
+      await set('deploy', { state: 'blocked', ctx: 22 });
+      await click(`.card[data-id="deploy"]`);
+      await tab('deploy');
+      await say('<span class="warn">Allow Bash(make deploy ENV=staging)?</span>', '', 300);
       await say('❯ 1. Yes   2. No', 'dim', 700);
       await key('⏎');
-      await set('reviewer', { state: 'active', ctx: 28 });
-      await say('<span class="dot">⏺</span> Tests pass. The form diff looks good.', '', 800);
+      await set('deploy', { state: 'active', ctx: 28 });
+      await say('<span class="dot">⏺</span> Staging is live: shop-api v1.8.0, shop-web v2.3.0.', '', 800);
       hidePtr();
     } },
     { t: 'Keep the tree healthy', p: 'Restart in place after an update. Compact with c, never /new or /clear.', run: async () => {
@@ -245,13 +250,13 @@
       await toast('PenguPool: restarting api…');
       await tab('api');
       await set('api', { blink: false, ctx: 41 });
-      await say('↻ Resumed in place: same session, same terminal, same group', 'dim', 700);
+      await say('↻ Resumed in place: same session, same worktree, same group', 'dim', 700);
       await set('lead', { ctx: 71 });  // a long-running parent: time to compact (the red ctx badge)
       await point(`.row[data-id="lead"]`, 0.4); await tab('lead'); await key('c');
-      await say('✓ Compacted · lead is still the parent of api, ui and reviewer', 'ok', 500);
+      await say('✓ Compacted · lead is still the parent of api, web and deploy', 'ok', 500);
       await set('lead', { ctx: 9 });
-      await chain('[ship-auth] api ✓ → ui ✓ → review ✓');
-      await log('reviewer', 'lead', 'review done, ready to merge', 'lb');
+      await chain('[ship-auth] api ✓ → web ✓ → deploy ✓');
+      await log('deploy', 'lead', 'staging deploy done, smoke tests green', 'lb');
       hidePtr(); await wait(1200);
     } },
   ];
