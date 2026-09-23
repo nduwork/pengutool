@@ -11,7 +11,9 @@ WIRE_ENV := CLAUDE_SETTINGS="$(CLAUDE_SETTINGS)" STEP_STATUS_HOME="$(STEP_STATUS
 
 EXT := extension
 UV ?= uv
-UV_INSTALL_FLAGS ?= --refresh --exclude-newer "3 days"
+# Three-day dependency cooloff as an absolute RFC 3339 time: older uv releases reject relative durations.
+EXCLUDE_NEWER := $(shell python3 -c "import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(days=3)).isoformat(timespec='seconds'))")
+UV_INSTALL_FLAGS ?= --refresh --exclude-newer "$(EXCLUDE_NEWER)"
 PENGUPOOL ?= pengupool
 EDITOR_CLI ?=
 EDITOR_RUN = EDITOR_CLI="$(EDITOR_CLI)" python3 scripts/editor_cli.py
