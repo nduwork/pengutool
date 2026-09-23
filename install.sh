@@ -9,7 +9,11 @@
 # Needs uv, make and python3; tmux and the agent CLIs are offered by `pengupool setup` (y/N each).
 set -euo pipefail
 REPO=nduwork/pengutool
-if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then exec </dev/tty; fi  # piped: keep y/N prompts on the terminal
+# Where the y/N prompts read from. Never `exec </dev/tty` here: under `curl … | bash` bash reads this
+# script from stdin, so swapping stdin makes it wait for the rest of the script on the keyboard.
+answers=/dev/null                                               # no terminal (CI): prompts default to No
+if [ -t 0 ]; then answers=/dev/stdin
+elif (: </dev/tty) 2>/dev/null; then answers=/dev/tty; fi      # piped from curl: ask on the terminal
 
 need() { command -v "$1" >/dev/null || { echo "PenguPool needs $1: $2" >&2; exit 1; }; }
 need python3 "install Python 3.11+"
@@ -54,7 +58,7 @@ else
   src=$tmp/src
 fi
 
-make -C "$src" install HARNESS="${HARNESS:-auto}"
+make -C "$src" install HARNESS="${HARNESS:-auto}" <"$answers"
 
 editors=${EDITOR_CLI:-}  # EDITOR_CLI picks one; unset = every VS Code / Cursor found (PATH or macOS app)
 if [ -z "$editors" ]; then
@@ -72,7 +76,7 @@ fi
 vsix=$tmp/pengupool.vsix
 if [ -n "$ref" ] && fetch pengupool.vsix "$ref" "$vsix" 2>/dev/null; then :
 elif command -v npm >/dev/null; then  # a checkout, or a release without the asset: build it
-  (cd "$src/extension" && npm ci --silent && npm run --silent compile && npm run --silent package -- --out "$vsix" >/dev/null)
+  (cd "$src/extension" && npm ci --silent </dev/null && npm run --silent compile && npm run --silent package -- --out "$vsix" >/dev/null)
 else
   echo "No prebuilt extension for ${ref:-this checkout} and no npm to build one: skipped the editor extension." >&2
   exit 0
