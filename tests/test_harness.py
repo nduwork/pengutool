@@ -73,3 +73,15 @@ def test_trees_never_mix_harnesses():
     assert model.apply_groups(sessions, [("lead", "pik", "msg")], groups) == [("piw", "pik", "")]
     assert model.group_error("p", "c", sessions).endswith("harnesses never share a tree")
     assert model.group_error("q", "p", sessions) == ""
+
+
+def test_a_long_busy_turn_is_never_stale(tmp_path, monkeypatch):
+    # updatedAt moves only on status changes, so a resumed session's long "continue" turn is old but working
+    monkeypatch.setattr(model, "CLAUDE", tmp_path / "claude")
+    old = int((time.time() - model.STALE_S - 60) * 1000)
+    live = {"sessionId": SID, "pid": os.getpid(), "cwd": "/r", "name": "w", "kind": "interactive",
+            "updatedAt": old, "startedAt": old}
+    for status, state in (("busy", "active"), ("shell", "active"), ("idle", "stale")):
+        model.write_json(model.PI_LIVE / f"{os.getpid()}.json", {**live, "status": status})
+        [s] = model.load_sessions()
+        assert s["state"] == state, status
