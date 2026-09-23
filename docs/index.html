@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="PenguPool brings Claude Code and pi sessions together in a local terminal UI and editor extension.">
+  <meta name="theme-color" content="#0b1320">
+  <title>PenguPool — your agent sessions, in view</title>
+  <link rel="icon" type="image/svg+xml" href="assets/penguin.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top"><span class="brand-icon"><img src="assets/penguin.svg" alt=""></span> PenguPool</a>
+    <nav aria-label="Main navigation">
+      <a href="#how-it-works">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/nduwork/pengutool">GitHub ↗</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <span class="eyebrow"><span class="pulse"></span> LOCAL-FIRST AGENT WORKSPACE</span>
+        <h1>Every agent session.<br><em>One clear view.</em></h1>
+        <p>Run Claude Code and pi side by side. See your session tree, follow messages, and jump into live work without losing your place.</p>
+        <div class="actions">
+          <a class="button primary" href="#install">Get started <span aria-hidden="true">→</span></a>
+          <a class="button secondary" href="https://github.com/nduwork/pengutool">View source ↗</a>
+        </div>
+        <p class="hero-note">Open source · macOS &amp; Linux · VS Code, Cursor, or terminal</p>
+      </div>
+      <div class="preview" role="img" aria-label="Illustration of the PenguPool session list, live agent map, and terminal">
+        <div class="preview-top"><div class="dots"><i></i><i></i><i></i></div><span>pengupool</span><span>⌘ 1</span></div>
+        <div class="preview-body">
+          <aside class="preview-list"><div class="pane-label">SESSIONS <b>3</b></div><div class="session selected"><span class="live"></span><div>Ship the feature<small>Claude Code · active</small></div></div><div class="session nested"><span class="live"></span><div>Build the UI<small>Claude Code · active</small></div></div><div class="session nested"><span class="idle"></span><div>Review changes<small>Claude Code · waiting</small></div></div><div class="preview-foot">+ New session</div></aside>
+          <div class="preview-main"><div class="map"><div class="pane-label">SESSION MAP <span>LIVE</span></div><div class="nodes"><div class="node parent">Ship the feature</div><div class="branch"></div><div class="children"><div class="node child">Build the UI</div><div class="node child">Review changes</div></div></div></div><div class="terminal"><div class="pane-label">TERMINAL <span>● CLAUDE CODE</span></div><code><span class="prompt">❯</span> Working on the session view…<br><span class="muted">  ✓ Sidebar wired to live sessions</span><br><span class="muted">  ✓ Map updated</span><br><span class="prompt">❯</span> <span class="cursor"></span></code></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features wrap" id="how-it-works">
+      <div class="section-intro"><span class="eyebrow">BUILT FOR MANY MOVING PARTS</span><h2>Keep the whole pool in sight.</h2><p>PenguPool makes local agent work easier to follow while the agents keep running in their own sessions.</p></div>
+      <div class="feature-grid">
+        <article><div class="feature-icon">⌘</div><h3>Switch without starting over</h3><p>Open live tmux sessions from a terminal UI or your editor. Leave the view and come back to the same work.</p></article>
+        <article><div class="feature-icon">⑂</div><h3>See the relationships</h3><p>Group sessions into a tree and follow a live map of parent, child, and cross-session messages.</p></article>
+        <article><div class="feature-icon">◎</div><h3>Give each session room</h3><p>Start work in an isolated git worktree, describe each session's role, and track its current phase.</p></article>
+      </div>
+    </section>
+
+    <section class="install-section" id="install"><div class="wrap install-layout"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Start on your machine.</h2><p>Install the Python backend and choose terminal or editor. PenguPool reads local session data; there is no hosted account to set up.</p><p class="requirements">Requires Python 3.11+, uv, Make, tmux 3.2+, and Claude Code and/or pi.</p></div><div class="code-card"><div class="code-title">TERMINAL</div><pre><code>git clone https://github.com/nduwork/pengutool.git
+cd pengutool
+make install
+pengupool</code></pre><a href="https://github.com/nduwork/pengutool#install">Full setup guide →</a></div></div></section>
+  </main>
+  <footer class="wrap"><span>© 2026 PenguPool · MIT licensed</span><div><a href="https://github.com/nduwork/pengutool">Source</a><a href="https://github.com/nduwork/pengutool/blob/main/.github/CONTRIBUTING.md">Contribute</a><a href="https://github.com/nduwork/pengutool/blob/main/.github/SECURITY.md">Security</a></div></footer>
+</body>
+</html>

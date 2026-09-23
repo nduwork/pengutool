@@ -1,0 +1,6 @@
+.gitignore
+tsconfig.json
+src/**
+tests/**
+node_modules/**
+**/*.map

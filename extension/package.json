@@ -1,0 +1,214 @@
+{
+  "name": "pengupool",
+  "displayName": "PenguPool",
+  "description": "Manage Claude Code and pi sessions with a shared tmux terminal, session tree, live map, and message log. Requires the PenguPool CLI.",
+  "version": "0.1.3",
+  "publisher": "nduwork",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nduwork/pengutool"
+  },
+  "icon": "media/icon.png",
+  "keywords": [
+    "Claude Code",
+    "pi",
+    "tmux",
+    "sessions",
+    "agents"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pengupool",
+          "title": "PenguPool",
+          "icon": "media/penguin.svg"
+        }
+      ]
+    },
+    "views": {
+      "pengupool": [
+        {
+          "id": "pengupoolSessions",
+          "name": "Claude Sessions",
+          "type": "webview"
+        },
+        {
+          "id": "pengupoolPiSessions",
+          "name": "Pi Sessions",
+          "type": "webview",
+          "when": "pengupool.bothHarnesses"
+        },
+        {
+          "id": "pengupoolHints",
+          "name": "Shortcuts"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "pengupool.switch",
+        "title": "PenguPool: Open / Focus Session"
+      },
+      {
+        "command": "pengupool.quickSwitch",
+        "title": "PenguPool: Quick Switch Session…"
+      },
+      {
+        "command": "pengupool.new",
+        "title": "PenguPool: New Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "pengupool.add",
+        "title": "PenguPool: Add Previous Session…",
+        "icon": "$(history)"
+      },
+      {
+        "command": "pengupool.group",
+        "title": "PenguPool: Group Under…"
+      },
+      {
+        "command": "pengupool.rename",
+        "title": "PenguPool: Rename"
+      },
+      {
+        "command": "pengupool.describe",
+        "title": "PenguPool: Describe Role…"
+      },
+      {
+        "command": "pengupool.close",
+        "title": "PenguPool: Close"
+      },
+      {
+        "command": "pengupool.compact",
+        "title": "PenguPool: Compact (/compact)"
+      },
+      {
+        "command": "pengupool.showMap",
+        "title": "PenguPool: Show Map",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "pengupool.showLog",
+        "title": "PenguPool: Show Log",
+        "icon": "$(output)"
+      },
+      {
+        "command": "pengupool.refresh",
+        "title": "PenguPool: Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pengupool.new",
+          "when": "view == pengupoolSessions || view == pengupoolPiSessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pengupool.add",
+          "when": "view == pengupoolSessions || view == pengupoolPiSessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pengupool.showMap",
+          "when": "view == pengupoolSessions || view == pengupoolPiSessions",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pengupool.showLog",
+          "when": "view == pengupoolSessions || view == pengupoolPiSessions",
+          "group": "navigation@4"
+        },
+        {
+          "command": "pengupool.refresh",
+          "when": "view == pengupoolSessions || view == pengupoolPiSessions",
+          "group": "navigation@5"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "pengupool.new",
+        "key": "n",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.add",
+        "key": "a",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.group",
+        "key": "g",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.rename",
+        "key": "r",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.describe",
+        "key": "d",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.close",
+        "key": "x",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "pengupool.compact",
+        "key": "c",
+        "when": "focusedView == pengupoolSessions || focusedView == pengupoolPiSessions"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "key": "shift+enter",
+        "args": {
+          "text": "\u001b\r"
+        },
+        "when": "terminalFocus && pengupool.claudeTerminal"
+      }
+    ],
+    "configuration": {
+      "title": "PenguPool",
+      "properties": {
+        "pengupool.command": {
+          "type": "string",
+          "default": "pengupool",
+          "description": "Path to the pengupool CLI. `<command> serve` streams NDJSON; `<command> ctl …` runs mutations."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^4.0.0",
+    "dagre": "^0.8.5",
+    "typescript": "^5.4.0"
+  }
+}

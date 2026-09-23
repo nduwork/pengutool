@@ -1,0 +1,22 @@
+[project]
+name = "pengupool"
+version = "0.8.0"
+description = "TUI manager for collaborative Claude Code sessions"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=8.0",
+    "textual-fspicker>=1.0.1",
+]
+
+[project.scripts]
+pengupool = "pengupool.app:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pengupool"]
