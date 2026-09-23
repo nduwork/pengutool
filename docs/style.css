@@ -40,10 +40,15 @@ kbd{border:1px solid #ffffff2a}
 .tab.on{background:#0d1620;color:#e4ebef;border-top:1px solid var(--mint)}
 .tab img{width:13px;height:13px;filter:brightness(0) invert(.8)}
 .map-pane{position:relative;flex:1;min-height:250px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.refresh{position:absolute;top:6px;right:8px;font-size:10.5px;padding:2px 8px;border-radius:3px;background:#2b3a46;color:#d6e0e6}
+.refresh{position:absolute;top:6px;right:8px;display:flex;gap:4px;font-size:10.5px}
+.refresh i{font-style:normal;padding:2px 8px;border-radius:3px;background:#2b3a46;color:#d6e0e6}
+@media (max-width:650px){.refresh i:not(:last-child){display:none}}
 .edges{position:absolute;inset:0;width:100%;height:100%}
 .edges path{fill:none;stroke:#7d95a1;stroke-width:2;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .card{position:absolute;box-sizing:border-box;background:#17222d;border:1.5px solid var(--st);border-radius:6px;padding:6px 9px;line-height:14px;overflow:hidden}
+.edges path.x{stroke:#f0883e;stroke-width:1.5;stroke-dasharray:4 4}
+.card.lone{border-style:dashed}
+.card .chip{float:right;font-size:8px;line-height:11px;letter-spacing:.08em;padding:0 3px;border:1px solid currentColor;border-radius:2px;color:#8497a2}
 .card.sel{box-shadow:0 0 0 3px #0d1620,0 0 0 5px #007fd4}
 .card .st{color:var(--st);font-size:10px;font-weight:600}
 .card .nm{font-weight:600;color:#e4ebef;font-size:11.5px}

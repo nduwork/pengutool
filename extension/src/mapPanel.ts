@@ -93,7 +93,11 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   #wrap { position:absolute; inset:0; overflow:auto; }
   .edge { stroke: var(--vscode-descriptionForeground); stroke-opacity:.75; fill:none; stroke-width:2;
           stroke-linejoin:round; }  /* panel-border is a faint divider colour: edges vanished against it */
-  .elabel { fill: var(--vscode-descriptionForeground); font-size:10px; }
+  /* @session and other cross-tree messages: dashed, in the Log's orange */
+  .xedge { stroke:#f0883e; stroke-opacity:.85; fill:none; stroke-width:1.5; stroke-dasharray:4,4; }
+  .elabel { fill: var(--vscode-descriptionForeground); font-size:9px; }
+  .emask { fill: var(--vscode-editor-background); }   /* keeps the line from bleeding through a label */
+  .node.lone .box { stroke-dasharray:4,4; }            /* ungrouped while others are grouped */
   .box { stroke:var(--state-color, var(--vscode-panel-border)); stroke-width:1.5; rx:6;
          fill: var(--vscode-editorWidget-background); transition: stroke 200ms; }
   .selection { fill:none; stroke:transparent; stroke-width:2; rx:8; pointer-events:none; }
@@ -105,7 +109,10 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   .state { color:var(--state-color); font-size:10px; line-height:14px; font-weight:600; }
   ${SESSION_STATE_CSS}
   ${CTX_LEVEL_CSS}
-  .content { box-sizing:border-box; width:100%; height:100%; padding:6px 10px; overflow:hidden;
+  .chip { position:absolute; top:6px; right:8px; font-size:8px; line-height:11px; letter-spacing:.08em;
+          padding:0 3px; border:1px solid currentColor; border-radius:2px; opacity:.7;
+          color:var(--vscode-descriptionForeground); }
+  .content { position:relative; box-sizing:border-box; width:100%; height:100%; padding:6px 10px; overflow:hidden;
              display:flex; flex-direction:column; justify-content:center; }
   .nm { color:var(--vscode-editor-foreground, var(--vscode-foreground)); font-weight:600;
         line-height:14px; overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical;
@@ -115,25 +122,45 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   .chain { font-size:10px; line-height:14px; overflow-wrap:anywhere; flex-shrink:0; }
   .probe { position:absolute; visibility:hidden; left:-10000px; top:0; height:auto; }
   .wprobe { position:absolute; visibility:hidden; left:-10000px; top:0; white-space:nowrap; display:inline-block; }
-  #refresh { position:absolute; top:4px; right:8px; z-index:2; cursor:pointer; padding:2px 8px; border-radius:3px;
+  #tools { position:absolute; top:4px; right:8px; z-index:2; display:flex; gap:4px; }
+  #tools button { cursor:pointer; padding:2px 8px; border-radius:3px;
              border:1px solid var(--vscode-button-border, transparent); font:inherit; font-size:11px;
              background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); }
-  #refresh:hover { background:var(--vscode-button-secondaryHoverBackground); }
+  #tools button:hover { background:var(--vscode-button-secondaryHoverBackground); }
   #empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
            color: var(--vscode-descriptionForeground); }
   ${HARNESS_TABS_CSS}
   #tabs { position:absolute; top:0; left:0; right:0; z-index:1; height:28px; box-sizing:border-box; }
   body.tabbed #wrap, body.tabbed #empty { top:28px; }
+  #legend { position:absolute; left:0; right:0; bottom:0; height:24px; box-sizing:border-box; padding:0 12px; display:none;
+            gap:16px; align-items:center; font-size:10px; color:var(--vscode-descriptionForeground);
+            border-top:1px solid var(--vscode-panel-border); background:var(--vscode-editor-background); }
+  #legend svg { vertical-align:middle; margin-right:4px; }
+  #wrap { bottom:24px; }
+  #svg { margin-top:28px; }   /* below the toolbar */
 </style></head><body>
 ${HARNESS_TABS_HTML}
-<button id="refresh" title="Reload all sessions from disk and redraw the map">⟳ Refresh</button>
+<div id="tools">
+  <button id="dir" title="Lay the map out top-down or left-right"></button>
+  <button id="spacing" title="Space the cards compactly or roomily"></button>
+  <button id="msgs" title="Show or hide @session message lines"></button>
+  <button id="refresh" title="Reload all sessions from disk and redraw the map">⟳ Refresh</button>
+</div>
 <div id="empty">no sessions</div>
-<div id="wrap"><svg id="svg" width="100%" height="100%"><g id="scene"></g></svg></div>
+<div id="wrap"><svg id="svg" width="100%" height="100%"><defs>
+  <marker id="xarrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#f0883e"/></marker>
+</defs><g id="scene"></g></svg></div>
+<div id="legend">
+  <span><svg width="18" height="8"><path d="M0,4 H18" class="edge"/></svg>parent → child</span>
+  <span><svg width="18" height="8"><path d="M0,4 H18" class="xedge"/></svg>@session message</span>
+  <span><svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="2" class="box" style="stroke:var(--vscode-descriptionForeground); stroke-dasharray:3,2"/></svg>ungrouped</span>
+</div>
 <script nonce="${nonce}" src="${dagreUri}"></script>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const scene = document.getElementById('scene');
   const empty = document.getElementById('empty');
+  const legend = document.getElementById('legend');
   const SVGNS = 'http://www.w3.org/2000/svg';
   const HTMLNS = 'http://www.w3.org/1999/xhtml';
   const states = ${JSON.stringify(SESSION_STATES)};
@@ -143,13 +170,71 @@ ${HARNESS_TABS_HTML}
   const nodeEls = new Map();
 
   function flat(roots){ const o=[]; const w=n=>{o.push(n); n.children.forEach(w);}; roots.forEach(w); return o; }
+  // Tree edges parent → child, and cross edges between branches. A cross edge that runs along a tree
+  // edge (a child's reply to its parent) is left out: it would sit on top of that edge, and the Log has it.
   function edges(roots, cross){
-    const byName = {}; const list = [];
+    const byName = {}; const tree = [], xs = [], along = new Set();
     flat(roots).forEach(n => byName[n.name]=n.id);
-    const w = n => n.children.forEach(c => { list.push([n.id, c.id, c.label||'']); w(c); });
+    const w = n => n.children.forEach(c => { tree.push([n.id, c.id, c.label||'']); along.add(n.id+'>'+c.id); along.add(c.id+'>'+n.id); w(c); });
     roots.forEach(w);
-    (cross||[]).forEach(([s,d,l]) => { if(byName[s]&&byName[d]) list.push([byName[s], byName[d], l||'']); });
-    return list;
+    (cross||[]).forEach(([s,d,l]) => { const a=byName[s], b=byName[d];
+      if(a && b && !along.has(a+'>'+b)) xs.push([a, b, l||'']); });
+    return { tree, cross: xs };
+  }
+  // A path through right-angle points with each bend rounded (r=6, less where a segment is short).
+  function rounded(pts){
+    pts = pts.filter((p,i) => !i || p[0]!==pts[i-1][0] || p[1]!==pts[i-1][1]);
+    const toward = (a,b,r) => { const d=Math.hypot(b[0]-a[0], b[1]-a[1])||1; return [a[0]+(b[0]-a[0])*r/d, a[1]+(b[1]-a[1])*r/d]; };
+    let d = 'M'+pts[0][0]+','+pts[0][1];
+    for(let i=1; i<pts.length-1; i++){
+      const [p,c,n] = [pts[i-1], pts[i], pts[i+1]];
+      const r = Math.min(6, Math.hypot(c[0]-p[0], c[1]-p[1])/2, Math.hypot(n[0]-c[0], n[1]-c[1])/2);
+      const a = toward(c,p,r), b = toward(c,n,r);
+      d += ' L'+a[0]+','+a[1]+' Q'+c[0]+','+c[1]+' '+b[0]+','+b[1];
+    }
+    const e = pts[pts.length-1]; return d+' L'+e[0]+','+e[1];
+  }
+  // Map options, kept per panel: direction, spacing, and whether @session lines are drawn.
+  const LAYOUTS = { TB:'↓ Top-down', LR:'→ Left-right' }, SPACINGS = { compact:'Compact', roomy:'Roomy' };
+  const opts = Object.assign({ dir:'TB', spacing:'compact', msgs:true }, vscode.getState?.()?.opts);
+  function spacing(){ const roomy = opts.spacing==='roomy';
+    return opts.dir==='TB' ? { nodesep: roomy ? 40 : 24, ranksep: roomy ? 80 : 48 }
+                           : { nodesep: roomy ? 28 : 16, ranksep: roomy ? 200 : 136 }; }  // LR: labels run along
+  // Only the tree goes to dagre, so an @session line never bends the tree. Lines are routed on the laid-out
+  // cards: a tree edge leaves the parent, turns on a bus 16px out (shared by the siblings) and runs into the
+  // child. An @session line turns in the gaps between ranks and crosses ranks only in a lane no card
+  // touches, attaching 16px off the cards' centre lines, on the side away from the labels and the tree's strokes.
+  function geometry(g){
+    const H = opts.dir==='TB';
+    const cards = g.nodes().map(id => { const n=g.node(id);
+      return { main:H?n.y:n.x, side:H?n.x:n.y, hm:(H?n.height:n.width)/2, hs:(H?n.width:n.height)/2 }; });
+    const ranks = {}; cards.forEach(c => { const k=Math.round(c.main); ranks[k]=Math.max(ranks[k]||0, c.hm); });
+    const centres = Object.keys(ranks).map(Number).sort((a,b)=>a-b);
+    const pt = (m, s) => H ? [s, m] : [m, s];
+    const at = id => cards[g.nodes().indexOf(id)];
+    // the gap on the sgn side of the rank at centre c (past the last rank: 12px beyond it)
+    const gap = (c, sgn) => { const k=Math.round(c), next=centres[centres.indexOf(k)+sgn];
+      return next===undefined ? k+sgn*(ranks[k]+12) : (k+sgn*ranks[k] + next-sgn*ranks[next])/2; };
+    const clear = (s, m1, m2) => cards.every(c => Math.abs(c.side-s) > c.hs+4 || Math.max(m1,m2) < c.main-c.hm || Math.min(m1,m2) > c.main+c.hm);
+    return { pt, at, gap, clear, cards };
+  }
+  function treeRoute(G, a, b){
+    const A=G.at(a), B=G.at(b), bus=A.main+A.hm+16;
+    return [G.pt(A.main+A.hm, A.side), G.pt(bus, A.side), G.pt(bus, B.side), G.pt(B.main-B.hm, B.side)];
+  }
+  function crossRoute(G, a, b){
+    const A=G.at(a), B=G.at(b);
+    const off = (opts.dir==='TB' ? -1 : 1) * 16;   // the side away from the labels: right of a TB drop, above an LR line
+    const sa = A.side + Math.sign(off)*Math.min(16, A.hs-8), sb = B.side + Math.sign(off)*Math.min(16, B.hs-8);
+    const sgn = B.main > A.main+1 ? 1 : B.main < A.main-1 ? -1 : 1;           // same rank: go round below
+    const ya = G.gap(A.main, sgn), yb = Math.abs(B.main-A.main) <= 1 ? ya : G.gap(B.main, -sgn);
+    const start = G.pt(A.main+sgn*A.hm, sa), end = G.pt(Math.abs(B.main-A.main) <= 1 ? B.main+sgn*B.hm : B.main-sgn*B.hm, sb);
+    if(Math.abs(ya-yb) < 1) return [start, G.pt(ya, sa), G.pt(ya, sb), end];
+    // a lane from ya to yb that no card touches: prefer one near the two ends; a lane beside any card works
+    const lanes = [sa, sb, ...G.cards.flatMap(c => [c.side-c.hs-10, c.side+c.hs+10])]
+      .filter(s => G.clear(s, ya, yb)).sort((p,q) => Math.abs(p-sa)+Math.abs(p-sb) - Math.abs(q-sa)-Math.abs(q-sb));
+    const lane = lanes.length ? lanes[0] : sa;
+    return [start, G.pt(ya, sa), G.pt(ya, lane), G.pt(yb, lane), G.pt(yb, sb), end];
   }
   // Card size MEASURED from the real fonts (dagre needs sizes before layout): an offscreen card holds
   // the same content and styles. ctx% is sized as "100%" so a changing percentage never relayouts.
@@ -174,24 +259,37 @@ ${HARNESS_TABS_HTML}
     scene.innerHTML=''; nodeEls.clear();
     const nodes = flat(snap.roots);
     empty.style.display = nodes.length ? 'none' : 'flex';
+    legend.style.display = nodes.length ? 'flex' : 'none';
     if(!nodes.length) return;
-    const g = new dagre.graphlib.Graph(); g.setGraph({rankdir:'TB', nodesep:24, ranksep:40, marginx:16, marginy:16});
+    const g = new dagre.graphlib.Graph(); g.setGraph({rankdir:opts.dir, ...spacing(), marginx:24, marginy:24});
     g.setDefaultEdgeLabel(()=>({}));
     nodes.forEach(n => {
       g.setNode(n.id, cardSize(n));
     });
-    edges(snap.roots, snap.cross).forEach(([a,b,l]) => g.setEdge(a,b,{label:l}));
+    const es = edges(snap.roots, opts.msgs ? snap.cross : []);
+    es.tree.forEach(([a,b]) => g.setEdge(a,b));
     dagre.layout(g);
+    const G = geometry(g);
     // edges first (under nodes)
-    g.edges().forEach(e => {
-      const pts = g.edge(e).points.map(p => p.x+','+p.y).join(' ');
-      scene.appendChild(el('polyline', {class:'edge', points:pts}));
-      const lbl = g.edge(e).label; if(lbl){ const m=g.edge(e).points[Math.floor(g.edge(e).points.length/2)];
-        const t=el('text',{class:'elabel', x:m.x+4, y:m.y-2}); t.textContent=lbl.slice(0,40); scene.appendChild(t); }
-    });
+    es.cross.forEach(([a,b]) => scene.appendChild(el('path', {class:'xedge', d:rounded(crossRoute(G, a, b)), 'marker-end':'url(#xarrow)'})));
+    const routes = es.tree.map(([a,b,l]) => { const pts=treeRoute(G, a, b);
+      scene.appendChild(el('path', {class:'edge', d:rounded(pts)})); return [pts, l, g.node(b)]; });
+    // labels over the edges, each on a mask 6px off the last segment into the child, cut to the room there
+    routes.forEach(([pts, l, c]) => { if(!pts || !l) return;
+      const [j, end] = pts.slice(-2), H = opts.dir==='TB';
+      const room = H ? c.width/2 + 60 : Math.abs(end[0]-j[0]) - 12;
+      let text = l; while(text.length > 1 && textW(text,'elabel') > room) text = text.slice(0,-2)+'…';
+      if(text.length < 3) return;
+      const w = Math.ceil(textW(text,'elabel'));
+      const x = H ? j[0]+6 : Math.min(j[0],end[0])+6, y = H ? end[1]-18 : j[1]-18;   // 6px off the child (TB) or the line (LR): the gap's middle stays free for @ lines
+      scene.appendChild(el('rect', {class:'emask', x, y, width:w+4, height:12, rx:2}));
+      const t=el('text',{class:'elabel', x:x+2, y:y+9}); t.textContent=text; scene.appendChild(t);
+      const tip=el('title',{}); tip.textContent=l; t.appendChild(tip); });
+    const lead = new Set(snap.roots.filter(r => r.children.length).map(r => r.id));
+    const lone = new Set(lead.size ? snap.roots.filter(r => !r.children.length).map(r => r.id) : []);
     nodes.forEach(n => {
       const nd=g.node(n.id); const gx=nd.x-nd.width/2, gy=nd.y-nd.height/2;
-      const grp=el('g',{class:'node state-'+n.state, transform:'translate('+gx+','+gy+')', tabindex:'0', role:'button', 'aria-label':'Open '+n.name});
+      const grp=el('g',{class:'node state-'+n.state+(lone.has(n.id)?' lone':''), transform:'translate('+gx+','+gy+')', tabindex:'0', role:'button', 'aria-label':'Open '+n.name});
       const ring=el('rect',{class:'selection', x:-3, y:-3, width:nd.width+6, height:nd.height+6, rx:8});
       const rect=el('rect',{class:'box', width:nd.width, height:nd.height, rx:6});
       const title=el('title',{}); title.textContent=n.name;
@@ -201,12 +299,13 @@ ${HARNESS_TABS_HTML}
       const harness=hel('span',{}), ctx=hel('span',{class:'ctx'}), repo=hel('span',{});  // ctx% is colored by level
       meta.appendChild(harness); meta.appendChild(ctx); meta.appendChild(repo);
       const chain=hel('div',{class:'chain'});
+      if(lead.has(n.id)){ const chip=hel('span',{class:'chip'}); chip.textContent='LEAD'; content.appendChild(chip); }
       content.appendChild(state); content.appendChild(nm); content.appendChild(meta); content.appendChild(chain); body.appendChild(content);
       const select=()=>vscode.postMessage({type:'select', id:n.id});
       grp.addEventListener('click', select);
       grp.addEventListener('keydown', ev=>{ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); select(); } });
       grp.appendChild(ring); grp.appendChild(rect); grp.appendChild(title); grp.appendChild(body); scene.appendChild(grp);
-      nodeEls.set(n.id, {grp, title, state, nm, meta, harness, ctx, repo, chain});
+      nodeEls.set(n.id, {grp, title, state, nm, meta, harness, ctx, repo, chain, lone: lone.has(n.id)});
     });
     const gr=g.graph(); document.getElementById('svg').setAttribute('viewBox', '0 0 '+(gr.width||100)+' '+(gr.height||100));
     document.getElementById('svg').setAttribute('width', (gr.width||100)); document.getElementById('svg').setAttribute('height', (gr.height||100));
@@ -216,7 +315,7 @@ ${HARNESS_TABS_HTML}
     flat(snap.roots).forEach(n => {
       const e = nodeEls.get(n.id); if(!e) return;
       const visual=states[n.state]||{symbol:'·',label:n.state};
-      e.grp.setAttribute('class', 'node state-'+n.state+(selected===n.id?' selected':''));
+      e.grp.setAttribute('class', 'node state-'+n.state+(e.lone?' lone':'')+(selected===n.id?' selected':''));
       e.grp.setAttribute('aria-label','Open '+n.name+', '+visual.label);
       e.state.textContent=visual.symbol+' '+visual.label;
       e.nm.textContent = n.name;
@@ -247,6 +346,16 @@ ${HARNESS_TABS_HTML}
   // lay the map out again from that fresh snapshot, even when its structure did not change.
   let fresh = false;
   function redraw(){ topo = null; sizes = ''; if(last){ relayout(last); restyle(last); } }
+  function showOpts(){
+    document.getElementById('dir').textContent = LAYOUTS[opts.dir];
+    document.getElementById('spacing').textContent = SPACINGS[opts.spacing];
+    document.getElementById('msgs').textContent = opts.msgs ? '@ lines: on' : '@ lines: off';
+  }
+  function setOpt(k, v){ opts[k] = v; vscode.setState?.({ opts }); showOpts(); redraw(); }
+  document.getElementById('dir').addEventListener('click', () => setOpt('dir', opts.dir==='TB' ? 'LR' : 'TB'));
+  document.getElementById('spacing').addEventListener('click', () => setOpt('spacing', opts.spacing==='compact' ? 'roomy' : 'compact'));
+  document.getElementById('msgs').addEventListener('click', () => setOpt('msgs', !opts.msgs));
+  showOpts();
   document.getElementById('refresh').addEventListener('click', () => { fresh = true; redraw(); vscode.postMessage({type:'refresh'}); });
   document.fonts?.ready.then(redraw);   // sizes measured before the editor font loaded are wrong
   vscode.postMessage({type:'ready'});

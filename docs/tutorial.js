@@ -52,14 +52,16 @@
   }
   function renderMap() {
     const pane = $('.cards'), pos = layout();
+    const grouped = S.sessions.some((x) => x.h === 'cc' && x.parent);
     for (const s of S.sessions.filter((x) => x.h === 'cc')) {
       let el = pane.querySelector(`[data-id="${s.id}"]`);
       if (!el) { el = document.createElement('div'); el.dataset.id = s.id; el.className = 'card fade'; pane.appendChild(el); }
       const p = pos[s.id];
-      el.className = el.className.replace(/\bst-\w+|\bsel\b|\bblink\b/g, '').trim() + ` st-${s.state}` + (S.sel === s.id ? ' sel' : '') + (s.blink ? ' blink' : '');
+      const lead = !s.parent && kids(s.id).length, lone = grouped && !s.parent && !lead;  // as the real map marks them
+      el.className = el.className.replace(/\bst-\w+|\bsel\b|\bblink\b|\blone\b/g, '').trim() + ` st-${s.state}` + (S.sel === s.id ? ' sel' : '') + (s.blink ? ' blink' : '') + (lone ? ' lone' : '');
       Object.assign(el.style, { left: p.x + '%', top: p.y + '%', width: p.w + '%' });
       const chain = !s.parent && kids(s.id).length && S.chain ? `<div class="ch">${esc(S.chain)}</div>` : '';
-      el.innerHTML = `<div class="st">${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
+      el.innerHTML = `<div class="st">${lead ? '<span class="chip">LEAD</span>' : ''}${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
         + `<div class="meta">${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}%</span></div>${chain}`;
     }
     let d = '';
@@ -68,6 +70,10 @@
       d += `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `;
     }
     $('.edges path').setAttribute('d', d);
+    // the latest message, when it is an @session line across the tree: dashed orange, run under the row of
+    // cards (never behind one) and up into the other card; the path starts and ends under the cards
+    const x = S.logs[S.logs.length - 1], xa = x && x.c === 'lo' && pos[x.src], xb = x && x.c === 'lo' && pos[x.dst];
+    $('.edges path.x').setAttribute('d', xa && xb ? `M${xa.x} ${xa.y + 10} V92 H${xb.x} V${xb.y + 10}` : '');
     const empty = !S.sessions.some((x) => x.h === 'cc');
     $('.map-empty').hidden = !empty;
   }
@@ -107,7 +113,7 @@
   async function tab(name) { S.tab = name; S.term = []; if (find(name)) S.sel = name; render(); await wait(250); }
   async function add(s) { S.sessions.push({ state: 'active', ctx: 4, ...s }); S.sel = s.id; render(); await wait(500); }
   async function set(id, patch) { Object.assign(find(id), patch); render(); await wait(300); }
-  async function log(src, dst, text, c) { S.logs.push({ k: S.logs.length, ts: stamp(), src, dst, text, c }); renderLog(); await wait(600); }
+  async function log(src, dst, text, c) { S.logs.push({ k: S.logs.length, ts: stamp(), src, dst, text, c }); renderLog(); renderMap(); await wait(600); }
   async function chain(text) { S.chain = text; render(); await wait(400); }
 
   // pointer, overlays
