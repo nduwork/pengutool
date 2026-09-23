@@ -51,7 +51,7 @@ test('Sessions title actions and shortcuts also apply to the pi Sessions view', 
 test('shortcuts avoid a Terminal section and describe PenguPool-specific behavior once', () => {
   const hints = fs.readFileSync(path.join(__dirname, '../src/hintsView.ts'), 'utf8');
   assert.doesNotMatch(hints, /label: 'Terminal'/);
-  assert.match(hints, /choose worktree · Claude Code or pi/);
+  assert.match(hints, /folder or new worktree · Claude Code or pi/);
   assert.match(hints, /prompt newline in Claude terminal/);
   assert.match(hints, /map cards refresh phase chain · context use/);
 });

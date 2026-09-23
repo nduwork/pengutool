@@ -6,7 +6,7 @@ type Hint = { label: string; description?: string; icon?: string; children?: Hin
 const HINTS: Hint[] = [
   { label: 'Sessions', children: [
     { label: '⏎ / click', description: 'open · focus work session' },
-    { label: 'n', description: 'choose worktree · Claude Code or pi' },
+    { label: 'n', description: 'folder or new worktree · Claude Code or pi' },
     { label: 'a', description: 'add previous Claude Code or pi session' },
     { label: 'g / drag', description: 'group under session · empty = top level' },
     { label: 'r / x', description: 'rename · close session' },

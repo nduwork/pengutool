@@ -49,9 +49,10 @@ The list and map share state cues: `● Active`, `◷ Waiting`, `○ Stale`, and
 The map marks the selected session with a separate focus outline.
 
 When creating a session, PenguPool asks whether to create an isolated worktree or use the selected
-folder, then which harness to run: Claude Code or pi. Each harness has its own tmux server and its
-own terminal (`PenguPool` for Claude Code, `PenguPool · pi` for pi), so showing a session of one
-never replaces the other. Sessions group only under a session of the same harness; pi rows are
+folder, then which harness to run: Claude Code or pi. Several sessions can share a folder, so using the
+selected folder is fine even when a session already runs there; a worktree only isolates a branch.
+Each harness has its own tmux server and its own terminal (`PenguPool` for Claude Code, `PenguPool · pi`
+for pi), so showing a session of one never replaces the other. Sessions group only under a session of the same harness; pi rows are
 marked `pi` in the Sessions list.
 Add Previous reopens its folder picker at the last directory selected, including after an editor
 restart, and lists past sessions of both harnesses.

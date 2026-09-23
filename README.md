@@ -33,7 +33,7 @@ Open the PenguPool view (penguin icon in the Activity Bar). The Sessions tree li
 | Key | Action |
 | --- | --- |
 | `Enter` / click | Open a session in the terminal |
-| `n`, `a` | Start a session (worktree or current folder) or add a previous one |
+| `n`, `a` | Start a session (in the folder or a new worktree) or add a previous one |
 | `g` / drag | Group under another session |
 | `r`, `x`, `c` | Rename, close, or compact a session |
 | `Shift+R` | Restart & resume, e.g. after a Claude Code or pi update |

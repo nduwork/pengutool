@@ -68,7 +68,7 @@ export function registerCommands(context: vscode.ExtensionContext, d: Deps): voi
     if (!name) { return; }
     const placement = await vscode.window.showQuickPick([
       { label: 'Create a worktree', description: 'isolated branch for this session', value: 'worktree' },
-      { label: 'Use selected folder', description: 'start without a new worktree', value: 'folder' },
+      { label: 'Use selected folder', description: 'no new worktree · fine if a session already runs here', value: 'folder' },
     ], { placeHolder: 'Choose where to start the session' });
     if (!placement) { return; }
     const harness = await vscode.window.showQuickPick(
