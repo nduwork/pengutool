@@ -92,5 +92,5 @@ if [ "$DRY" = 1 ]; then echo "--- dry run: would commit, tag v$next and push ---
 git add pyproject.toml uv.lock CHANGELOG.md extension/package.json extension/package-lock.json extension/CHANGELOG.md
 git commit -q -m "chore: release $next"
 git tag -a "v$next" -m "v$next"
-git push -q origin main "v$next"
+git push --atomic -q origin main "v$next"  # both refs or neither: never a tag that main lacks
 echo "released v$next → https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/v$next (workflow publishes the wheel, source archive, VSIX, and notes)"

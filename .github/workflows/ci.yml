@@ -1,5 +1,12 @@
 name: ci
 
+# Runs only the checks a change needs. A pull request that touches only docs (the landing page under
+# docs/, *.md files) runs neither suite; Python and extension changes each run their own suite. Pushes to
+# main and manual runs always run everything and upload the build artifacts.
+#
+# `test` is the check branch protection requires, so it always reports: it passes when every suite that
+# ran passed (skipped suites count as passed) and fails otherwise.
+
 on:
   push:
     branches: [main]
@@ -7,8 +14,41 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      extension: ${{ steps.filter.outputs.extension }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            echo "python=true" >> "$GITHUB_OUTPUT"; echo "extension=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "$BASE...$HEAD")
+          printf 'changed:\n%s\n' "$files"
+          # install.sh and the tracker are exercised by the Python tests; a CI change reruns everything.
+          py='^(pengupool/|tests/|scripts/|workflow-tracker/|pyproject\.toml$|uv\.lock$|Makefile$|install\.sh$|\.github/workflows/ci\.yml$)'
+          ext='^(extension/|\.github/workflows/ci\.yml$)'
+          ext_docs='^extension/(README|CHANGELOG)\.md$'
+          echo "python=$(grep -qE "$py" <<<"$files" && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          ext_files=$(grep -E "$ext" <<<"$files" | grep -vE "$ext_docs" || true)  # no grep -q: pipefail + SIGPIPE
+          echo "extension=$([ -n "$ext_files" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  python:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,23 +56,45 @@ jobs:
       - run: uv sync --group dev
       - run: uv run pytest -q
       - run: uv build --out-dir "$RUNNER_TEMP/pengupool-dist"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pengupool-python
+          path: ${{ runner.temp }}/pengupool-dist/*
+          if-no-files-found: error
+
+  extension:
+    needs: changes
+    if: needs.changes.outputs.extension == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: extension/package-lock.json
       - run: npm ci
-        working-directory: extension
       - run: npm test
-        working-directory: extension
       - run: npm run compile
-        working-directory: extension
       - run: npm run package -- --out "$RUNNER_TEMP/pengupool-ci.vsix"
-        working-directory: extension
       - uses: actions/upload-artifact@v7
         with:
-          name: pengupool-build
-          path: |
-            ${{ runner.temp }}/pengupool-dist/*
-            ${{ runner.temp }}/pengupool-ci.vsix
+          name: pengupool-vsix
+          path: ${{ runner.temp }}/pengupool-ci.vsix
           if-no-files-found: error
+
+  test:
+    needs: [changes, python, extension]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ needs.changes.result }} ${{ needs.python.result }} ${{ needs.extension.result }}
+        run: |
+          echo "changes/python/extension: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "a required suite did not pass: $r"; exit 1 ;; esac
+          done
