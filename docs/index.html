@@ -28,11 +28,16 @@
         <span class="eyebrow"><span class="pulse"></span> VS CODE · CURSOR · PI</span>
         <h1>Every agent session.<br><em>In your editor.</em></h1>
         <p>The PenguPool extension puts your Claude Code and pi sessions in the VS Code or Cursor sidebar: a session tree, a live map of who is talking to whom, the message log, and a terminal that switches between live sessions without restarting them.</p>
-        <div class="actions">
-          <a class="button primary" href="#install">Get started <span aria-hidden="true">→</span></a>
-          <a class="button secondary" href="#plugins">See the plugins</a>
+        <div class="install-box" id="install">
+          <div class="cmd"><span class="pmt" aria-hidden="true">$</span><code id="cmd">curl -fsSL https://pengupool.nduwork.com/install.sh | bash</code></div>
+          <button type="button" id="copy" aria-label="Copy install command">Copy</button>
         </div>
-        <p class="hero-note">Open source · MIT · macOS &amp; Linux · v0.1.0</p>
+        <p class="install-note">Installs the CLI, the wiring for each installed harness, and the extension in every VS Code and Cursor it finds. Needs Python 3.11+, Make, tmux 3.2+, and Claude Code and/or pi. <a href="https://github.com/nduwork/pengutool#install">Other install options →</a></p>
+        <div class="actions">
+          <a class="button secondary" href="#plugins">See the plugins</a>
+          <a class="button secondary" href="#guide">Read the guide</a>
+        </div>
+        <p class="hero-note">Open source · MIT · macOS &amp; Linux · v0.1.0 · local only, no hosted account</p>
       </div>
       <div class="ide" role="img" aria-label="The PenguPool extension in Cursor: the Claude Sessions and Pi Sessions trees in the sidebar, the session map and message log side by side, and the PenguPool terminal below">
         <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop-app — Cursor</span><span></span></div>
@@ -115,8 +120,15 @@
       </div>
     </section>
 
-    <section class="install-section" id="install"><div class="wrap install-layout"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Start on your machine.</h2><p>One command installs the backend, the wiring for each installed harness, and the extension in every VS Code and Cursor it finds. PenguPool reads local session data; there is no hosted account to set up.</p><p class="requirements">Requires Python 3.11+, Make, tmux 3.2+, VS Code or Cursor, and Claude Code and/or pi.</p></div><div class="code-card"><div class="code-title">TERMINAL</div><pre><code>curl -fsSL https://pengupool.nduwork.com/install.sh | bash</code></pre><a href="https://github.com/nduwork/pengutool#install">Full setup guide →</a></div></div></section>
   </main>
   <footer class="wrap"><span>© 2026 PenguPool · MIT licensed</span><div><a href="https://github.com/nduwork/pengutool">Source</a><a href="https://github.com/nduwork/pengutool/blob/main/.github/CONTRIBUTING.md">Contribute</a><a href="https://github.com/nduwork/pengutool/blob/main/.github/SECURITY.md">Security</a></div></footer>
+  <script>
+    document.getElementById('copy').addEventListener('click', function () {
+      var b = this;
+      navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function () {
+        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+      });
+    });
+  </script>
 </body>
 </html>
