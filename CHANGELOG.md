@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Website at https://pengupool.nduwork.com: an animated tutorial of a real pool, a demo script for presenting it, and a best-practices guide (`docs/guide.md`). Install with `curl -fsSL https://pengupool.nduwork.com/install.sh | bash`.
+- Map and Sessions view: context use is coloured by level: green below 30%, orange below 60%, red from 60%. **⟳ Refresh** now reloads everything from the backend and lays the map out again.
+- `pengupool ctl slash <sid> compact | rename <name>`: Rename and Compact type into the session's own pane after clearing its input line, so a half-typed prompt is never submitted with them.
+- Releases attach `SHA256SUMS`, and `install.sh` verifies the editor extension against it before installing.
+
+### Fixed
+- `curl … | bash` no longer freezes waiting on the terminal. It works when GitHub CLI is installed but not signed in, a download cut off mid-transfer runs nothing, `PENGUPOOL_REF` accepts tags, branches or SHAs, a failed editor install exits non-zero, and older uv versions accept the dependency cooloff.
+- Clicking into the PenguPool terminal no longer replaces your clipboard: a drag must select at least 2 characters to copy.
+- A session in a long busy turn no longer shows as Stale.
+- Routing guard: an agent can no longer grant itself a direct line through `ctl context`, regroup itself with `ctl group`, or message past the rule by sending to a folder (pi), a `uds:` socket, or a differently cased name. A session file caught mid-write now blocks the send instead of allowing it.
+- Process safety: the pid-reuse check works in every locale, stop and restart never report success for someone else's process, and resume rejects ids that would read as flags.
+- Editor extension: it no longer closes your terminals when a session shares their name. Cmd/Ctrl shortcuts in the sidebar stay with the editor (Cmd+C no longer compacts). The default terminal attaches once instead of retrying every second. Map edges are easier to see.
+- Settings writes keep symlinks and file permissions, and concurrent regrouping no longer loses a change.
+
+### Changed
+- A new session may share a folder with an existing one; the new-session picker and docs say so.
+- CI runs only the suites a change needs; docs-only changes skip both.
+
 ## [0.1.0] - 2026-09-23
 
 First public release.
