@@ -125,10 +125,12 @@ def draw_tree(sess: dict, me: str, full: bool = False) -> list[str]:
     while sess[root].get("parent") in sess and sess[root]["parent"] not in seen:
         root = sess[root]["parent"]
         seen.add(root)
-    count, stack = 0, [root]
-    while stack:
+    count, stack, counted = 0, [root], {root}
+    while stack:  # counted: a children cycle (the same id reached twice) must not loop forever
         count += 1
-        stack += [c for c in sess[stack.pop()]["children"] if c in sess]
+        kids = [c for c in sess[stack.pop()]["children"] if c in sess and c not in counted]
+        counted.update(kids)
+        stack += kids
     keep = None
     if not full and count > LIMIT:
         keep = set(seen) | set(sess[me]["children"])
@@ -263,10 +265,11 @@ def tag(sid: str, prompt: str) -> list[str]:
         return []
 
 
-def text_for(sid: str, solo: bool = True, h: str = "cc", prompt: str | None = None) -> str:
+def text_for(sid: str, solo: bool = True, h: str = "cc", prompt: str | None = None, grant: bool = True) -> str:
     """The context block for one session ('' when it has nothing to describe). `prompt`: the user's
-    prompt this block precedes, whose @session tags lift the adjacent rule for them."""
-    tagged = tag(sid, prompt) if prompt is not None else []
+    prompt this block precedes, whose @session tags lift the adjacent rule for them, but only when
+    `grant` (the caller proved the prompt is the user's)."""
+    tagged = tag(sid, prompt) if prompt is not None and grant else []
     tree = load_tree() or {}
     # ponytail: pi gets the ROUTE / ROLE directives but no end-of-turn audit (pi has no blocking Stop hook yet)
     ask, solo_ask = ask_role(tree, sid) if prompt is not None else (False, False)

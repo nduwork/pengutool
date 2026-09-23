@@ -12,6 +12,7 @@ PI_SID = "0192f7a1-1111-7000-8000-000000000001"
 
 def test_group_set_and_clear(tmp_path, monkeypatch):
     monkeypatch.setattr(model, "GROUPS", tmp_path / "groups.json")
+    monkeypatch.setattr(ctl.profiles, "caller", lambda: "")  # the user, from the editor
     monkeypatch.setattr(model, "load_sessions", lambda: [{"sessionId": "c1"}, {"sessionId": "p1"}])
     assert ctl.main(["group", "c1", "p1"]) == 0
     assert model.load_groups() == {"c1": "p1"}
@@ -21,6 +22,7 @@ def test_group_set_and_clear(tmp_path, monkeypatch):
 
 def test_group_refuses_to_mix_harnesses(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(model, "GROUPS", tmp_path / "groups.json")
+    monkeypatch.setattr(ctl.profiles, "caller", lambda: "")  # the user, from the editor
     monkeypatch.setattr(model, "load_sessions", lambda: [{"sessionId": "cc1", "harness": "cc"},
                                                          {"sessionId": "pi1", "harness": "pi"},
                                                          {"sessionId": "pi2", "harness": "pi"}])
@@ -252,3 +254,35 @@ def test_context_prints_the_sessions_block(monkeypatch, capsys):
 def test_bad_verb_returns_nonzero(capsys):
     assert ctl.main(["nope"]) == 2
     assert ctl.main([]) == 2
+
+
+def test_a_session_cannot_regroup(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(model, "GROUPS", tmp_path / "groups.json")
+    monkeypatch.setattr(model, "load_sessions", lambda: [{"sessionId": "c1"}, {"sessionId": "p1"}])
+    monkeypatch.setattr(ctl.profiles, "caller", lambda: "c1")  # run from inside a session
+    assert ctl.main(["group", "c1", "p1"]) == 2
+    assert "sessions cannot regroup" in capsys.readouterr().err
+    assert not (tmp_path / "groups.json").exists()
+
+
+def test_resume_rejects_an_id_that_would_read_as_a_flag(capsys):
+    assert ctl.main(["resume", "/repo", "w", "--dangerously-skip-permissions"]) == 2
+    assert "invalid session id" in capsys.readouterr().err
+
+
+def test_slash_types_into_the_sessions_own_pane_and_only_for_the_user(monkeypatch, capsys):
+    from pengupool import tmux
+    typed = []
+    monkeypatch.setattr(tmux, "slash", lambda pane, text, h="cc": typed.append((pane, text, h)) or True)
+    sessions = {"c1": {"sessionId": "c1", "harness": "cc"}, "p1": {"sessionId": "p1", "harness": "pi"}}
+    monkeypatch.setattr(ctl, "_index", lambda: ({}, sessions))
+    monkeypatch.setattr(ctl, "_session_pane", lambda sid, reg, s: {"c1": "%1", "p1": "%2"}[sid])
+    monkeypatch.setattr(ctl.profiles, "caller", lambda: "")
+    assert ctl.main(["slash", "c1", "compact"]) == 0
+    assert ctl.main(["slash", "c1", "rename", "api"]) == 0
+    assert ctl.main(["slash", "p1", "rename", "docs"]) == 0
+    assert typed == [("%1", "/compact", "cc"), ("%1", "/rename api", "cc"), ("%2", "/alias docs", "pi")]
+    assert ctl.main(["slash", "c1", "rename", "a\nsecond prompt"]) == 2  # never a newline into the agent
+    monkeypatch.setattr(ctl.profiles, "caller", lambda: "c1")          # from inside a session
+    assert ctl.main(["slash", "p1", "compact"]) == 2
+    assert len(typed) == 3

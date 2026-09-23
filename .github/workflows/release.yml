@@ -47,4 +47,15 @@ jobs:
           { echo; echo "Install everything (CLI, harness wiring, tracker, and the extension in every VS Code/Cursor found):"; echo; echo "\`curl -fsSL https://pengupool.nduwork.com/install.sh | PENGUPOOL_REF=${GITHUB_REF_NAME} bash\`"; } >> "$notes"
       - name: Publish
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-        run: gh release create "${GITHUB_REF_NAME}" "$RUNNER_TEMP/pengupool-dist/"* "$RUNNER_TEMP/pengupool.vsix" --title "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md" --latest
+        # Re-runnable: a release left half-published by a failed run gets its assets replaced. GitHub picks
+        # "latest" by semver, so a backport tag never becomes what install.sh installs by default.
+        run: |
+          set -euo pipefail
+          # SHA256SUMS lets install.sh check the VSIX before installing it into every editor
+          (cd "$RUNNER_TEMP" && sha256sum pengupool.vsix pengupool-dist/* | sed 's# pengupool-dist/# #' > SHA256SUMS)
+          assets=("$RUNNER_TEMP/pengupool-dist/"* "$RUNNER_TEMP/pengupool.vsix" "$RUNNER_TEMP/SHA256SUMS")
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" --title "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
