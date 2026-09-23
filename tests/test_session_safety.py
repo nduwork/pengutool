@@ -146,11 +146,10 @@ def test_mouse_copy_flashes_the_hint_top_right(monkeypatch):
     binds = [c for c in calls if c[0] == "bind-key"]
     for call, table in zip(binds, ("copy-mode", "copy-mode-vi"), strict=True):
         assert call == (
-            "bind-key", "-T", table, "MouseDragEnd1Pane",
-            "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy", "\\;",
-            "set-option", "status", "on", "\\;",
-            "run-shell", "-b",
-            "sleep 2; tmux -L pengupool set-option -t '#{session_name}' status off",
+            "bind-key", "-T", table, "MouseDragEnd1Pane", "if-shell", "-F", tmux.MIN_SELECTION,
+            "send-keys -X copy-pipe-and-cancel pbcopy ; set-option status on ; run-shell -b "
+            "\"sleep 2; tmux -L pengupool set-option -t '#{session_name}' status off\"",
+            "send-keys -X cancel",  # a tiny drag (a wobbly click) leaves the clipboard alone
         )
 
 

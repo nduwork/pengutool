@@ -87,3 +87,35 @@ def test_one_extension_view_switches_between_windows(servers):
     selected = run(shared, "display-message", "-p", "-t", "pv-ext-editor-1", "#{window_id}").stdout.strip()
     target = run(shared, "display-message", "-p", "-t", second, "#{window_id}").stdout.strip()
     assert selected == target
+
+
+def test_a_wobbly_click_does_not_copy_but_a_real_selection_does(servers, monkeypatch):
+    """A click that moves a pixel is a 1-character drag: it must not replace the user's clipboard."""
+    (shared, _, _), run = servers
+    monkeypatch.setattr(tmux, "_copy_ready", set())
+    tmux.enable_mouse_copy("cc")
+    bound = run(shared, "list-keys", "-T", "copy-mode").stdout
+    assert "MouseDragEnd1Pane" in bound and "if-shell" in bound and "send-keys -X cancel" in bound
+    pane = run(shared, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", "pengupool:",
+               "printf 'hello world\\nsecond line\\n'; sleep 120").stdout.strip()
+
+    def copies(*moves):
+        run(shared, "copy-mode", "-t", pane)
+        run(shared, "send-keys", "-t", pane, "-X", "top-line")
+        run(shared, "send-keys", "-t", pane, "-X", "start-of-line")
+        run(shared, "send-keys", "-t", pane, "-X", "begin-selection")
+        for m in moves:
+            run(shared, "send-keys", "-t", pane, "-X", m)
+        got = run(shared, "display-message", "-p", "-t", pane, tmux.MIN_SELECTION).stdout.strip()
+        run(shared, "send-keys", "-t", pane, "-X", "cancel")
+        return got == "1"
+
+    assert not copies()                             # a click that moved inside one character
+    assert copies("cursor-right")                   # two characters
+    assert copies("cursor-down")                    # across lines
+    run(shared, "copy-mode", "-t", pane)
+    run(shared, "send-keys", "-t", pane, "-X", "top-line")
+    run(shared, "send-keys", "-t", pane, "-X", "end-of-line")
+    run(shared, "send-keys", "-t", pane, "-X", "begin-selection")
+    run(shared, "send-keys", "-t", pane, "-X", "cursor-left")
+    assert run(shared, "display-message", "-p", "-t", pane, tmux.MIN_SELECTION).stdout.strip() == "1"  # leftward
