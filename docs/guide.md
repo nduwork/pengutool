@@ -14,8 +14,8 @@ session must describe itself. It can't know what you meant a session *for*. Thes
 4. **Brief the parent.** Tell it which children it now has and what each one is for. Copy the parent
    template below.
 5. **Brief each child** with the child template.
-6. **Check the roles.** Hover a row in the Sessions view: the tooltip shows the role, or *role not set*.
-   A child with no role is asked to describe itself on its next prompt.
+6. **Check the roles.** Each child describes itself on its first prompt. Hover a row to review the role
+   (or *role not set*), and edit it if it's off (see [practice 2](#2-check-each-role-edit-when-needed)).
 
 ## The practices
 
@@ -43,30 +43,36 @@ and review yourself. When it reports back, review the diff before telling me it'
 Child template:
 
 ```text
-You are <child>, under <parent>. You own <area>. Set your role with pengupool ctl describe
-(summary, responsibility and routing keywords), then wait for work from <parent>.
+You are <child>, under <parent>. You own <area>. Describe your role to match,
+then wait for work from <parent>.
 Report results back to <parent>, not to me.
 ```
 
-### 2. Give every session a role and keywords
+### 2. Check each role, edit when needed
 
-```sh
-pengupool ctl describe <session-id> \
-  --summary "REST API" \
-  --responsibility "Own the server/ endpoints, their tests and the API docs" \
-  --keywords "api, endpoint, auth, server"
-```
+Sessions set their own role:
 
-- The **summary** is the one-line role other sessions see in the tree.
-- **Keywords** drive triage. When your prompt to a parent matches a child's keywords, name, workspace or
-  role, the parent is told `ROUTE REQUIRED` and must message that child first. If the turn ends
-  without that message, the Stop hook sends it back once.
-- A session with no role is told `ROLE REQUIRED` and must describe itself before it does anything else.
-  A parent can also set a child's role (the child is told who changed it), and so can you: right-click a
-  row → **Describe Role…**.
+- A session with no role is told `ROLE REQUIRED` and must describe itself before it does anything else:
+  a one-line summary, a short responsibility and its routing keywords. Parents are shown which children
+  still have no role.
+- Triage also matches a child's name, workspace and role words, so routing works even without keywords.
 
-Pick keywords that belong to this session and not to its parent. A term that also describes the parent
-doesn't count.
+Review what each session wrote and correct anything that's off. A session's own keywords can be too broad
+or miss the terms you actually use:
+
+- **Summary and responsibility:** hover a row in the Sessions view to see them, then right-click →
+  **Describe Role…** to edit. A parent can also set a child's role. Whoever edited it last is recorded, and
+  the session is told.
+- **Keywords:** set them from the CLI. Your list replaces the session's:
+
+  ```sh
+  pengupool ctl describe <session-id> --keywords "api, endpoint, auth, server"
+  ```
+
+Keywords drive triage. When your prompt to a parent matches a child's keywords, name, workspace or role,
+the parent is told `ROUTE REQUIRED` and must message that child first. If the turn ends without that
+message, the Stop hook sends it back once. Pick terms that belong to the child and not to its parent; a
+term that also describes the parent doesn't count.
 
 ### 3. Talk to the top, let triage route
 
