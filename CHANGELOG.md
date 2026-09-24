@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Routing no longer flags a child because the prompt names the parent's own repo. A parent in `acme-shop-portal` (or a worktree of `acme-shop`) saying "shop" or "acme-shop" no longer triggers `ROUTE REQUIRED` and the Stop-hook "routing skipped" block for a child named `acme-shop-site`. Names and workspaces are now split the same way on both sides. The Stop message names the words that matched, so a wrong match is plain to see.
+
 ## [0.3.0] - 2026-09-23
 
 ### Changed

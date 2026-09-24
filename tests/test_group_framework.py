@@ -211,6 +211,8 @@ def test_code_matches_the_prompt_to_a_child_and_audits_the_route(home, monkeypat
     state = context.ROUTES / f"{A}.json"
     model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
     assert "routing skipped for kid" in context.audit(A, again=False)                # never messaged
+    model.write_json(state, {"targets": {B: "kid"}, "why": {"kid": ["lexer"]}, "ts": __import__("time").time()})
+    assert "routing skipped for kid (matched: lexer)" in context.audit(A, again=False)  # says why
     assert context.audit(A, again=False) == ""                                       # blocks once
     model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
     assert context.audit(A, again=True) == ""                                        # stop_hook_active
@@ -286,3 +288,16 @@ def test_socket_addresses_and_name_case_do_not_slip_past_the_guard():
     ok, why = routing.authorize_send(D, "Other", t)                          # case-folded name
     assert not ok and "Send it to kid" in why
     assert routing.authorize_send(B, "LEAD", t) == (True, "")
+
+
+def test_a_prefix_the_parent_shares_with_its_child_is_not_a_match(home, monkeypatch):
+    # parent "acme-shop-portal" in a worktree of acme-shop, child "acme-shop-site" in acme-shop itself:
+    # "shop" or "acme-shop" is the parent's own repo, not the child; the child's own word ("site") still routes
+    monkeypatch.setattr(context, "ROUTES", home / "routes")
+    tree = _sess(**{A: {"name": "acme-shop-portal", "repo": "acme-shop-wt-acme-shop-portal", "state": "active", "harness": "cc",
+                        "parent": None, "children": [B], "workspace": "acme-shop-wt-acme-shop-portal", "summary": ""},
+                    B: {"name": "acme-shop-site", "repo": "acme-shop", "state": "active", "harness": "cc",
+                        "parent": A, "children": [], "workspace": "acme-shop", "summary": ""}})
+    assert context.route_match(tree, A, "commit and push the shop portal fix") == []
+    assert context.route_match(tree, A, "rebase acme-shop onto main") == []   # the base repo of my worktree
+    assert context.route_match(tree, A, "rebuild the site") == [(B, "acme-shop-site", ["site"])]
