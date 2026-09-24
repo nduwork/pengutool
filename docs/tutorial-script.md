@@ -20,35 +20,23 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | `docs-writer` | pi | `shop` | the docs |
 | `payments` | Claude Code | `shop-payments` | checkout and billing; **not in the tree** |
 
-**Running time:** about 90 seconds for the loop, 5–7 minutes live.
+**Running time:** about 70 seconds for the loop, 5 minutes live.
 
 ---
 
-## Scene 1 · Install (≈10 s)
+## Before the demo · setup (not in the player)
 
-![Scene 1: Install](assets/tutorial/1-install.gif)
-
-| | |
-| --- | --- |
-| **Shot** | Cursor with an empty PenguPool sidebar ("No sessions yet"). The bottom panel is a plain `zsh` terminal. |
-| **Action** | Type `curl -fsSL https://pengupool.nduwork.com/install.sh \| bash`. The installer reports the CLI, Claude Code hooks, pi extension, workflow tracker, and "Extension installed in Cursor". |
-| **Caption** | One command installs the backend, the harness wiring and the editor extension. |
-| **Live demo** | Run it for real beforehand; on stage, show the output and reload the window. Nothing to configure. |
-
-## Scene 2 · Start a team (≈20 s)
-
-![Scene 2: Start a pool](assets/tutorial/2-start-a-pool.gif)
+Do this before you go on stage. The player starts from this state.
 
 | | |
 | --- | --- |
-| **Shot** | Sidebar focused. |
-| **Action** | Press `n` for each session and pick its repo. `lead` starts in `~/code/shop` with **Use selected folder**. `api` starts in `~/code/shop-api` with **Create a worktree**, so its repo shows `shop-api-wt-token`. `web` (`~/code/shop-web`) and `deploy` (`~/code/shop-deploy`) use their folders; `payments` (`~/code/shop-payments`) is another team's app that stays ungrouped; and `docs-writer` runs **pi** in the monorepo (it lands under *Pi Sessions*). Each appears as ● Active in the sidebar and as a card on the map. |
-| **Caption** | Press n for each agent: pick its repo, a new worktree or the folder itself, and the harness. |
-| **Live demo** | Say why `api` gets a worktree: the feature lands as its own branch while the backend's main checkout stays free. The other apps work in their own folders. |
+| **Install** | Run `curl -fsSL https://pengupool.nduwork.com/install.sh \| bash` and reload the window. It sets up the CLI, the Claude Code hooks, the pi extension, the workflow tracker and the editor extension. Nothing to configure. |
+| **Add the agents** | Press `n` for each agent and pick its repo. `lead` starts in `~/code/shop` with **Use selected folder**. `api` starts in `~/code/shop-api` with **Create a worktree**, so its repo shows `shop-api-wt-token`. `web` (`~/code/shop-web`) and `deploy` (`~/code/shop-deploy`) use their folders. `payments` (`~/code/shop-payments`) is another team's app and stays ungrouped. `docs-writer` runs **pi** in the monorepo. |
+| **Live demo** | If asked, say why `api` gets a worktree: the feature lands on its own branch while the backend's main checkout stays free. |
 
-## Scene 3 · Group the children (≈10 s)
+## Scene 1 · Group the children (≈10 s)
 
-![Scene 3: Group the children](assets/tutorial/3-group-the-children.gif)
+![Scene 1: Group the children](assets/tutorial/1-group-the-children.gif)
 
 | | |
 | --- | --- |
@@ -57,9 +45,9 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | **Caption** | Drag each app session onto the monorepo lead; payments stays on its own. The map becomes the tree every session sees. |
 | **Live demo** | Mention `g` as the keyboard way, and that a Claude session can't be grouped under a pi one. |
 
-## Scene 4 · Brief the parent (≈14 s)
+## Scene 2 · Brief the parent (≈14 s)
 
-![Scene 4: Brief the parent](assets/tutorial/4-brief-the-parent.gif)
+![Scene 2: Brief the parent](assets/tutorial/2-brief-the-parent.gif)
 
 | | |
 | --- | --- |
@@ -68,9 +56,9 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | **Caption** | Tell the parent about every new child and how you plan to use it. |
 | **Live demo** | This is the habit to sell. Without it the parent sees names but not intent. Right-click → *Describe Role…* to edit a role. |
 
-## Scene 5 · Ask the top, watch it route (≈16 s)
+## Scene 3 · Ask the top, watch it route (≈16 s)
 
-![Scene 5: Ask the top, watch it route](assets/tutorial/5-ask-the-top.gif)
+![Scene 3: Ask the top, watch it route](assets/tutorial/3-ask-the-top.gif)
 
 | | |
 | --- | --- |
@@ -79,9 +67,9 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | **Caption** | Talk to the top. Triage routes each part to the repo session that owns it. |
 | **Live demo** | Point at the `Triage:` line. It's how you see the decision before any work happens. |
 
-## Scene 6 · Direct line and approvals (≈16 s)
+## Scene 4 · Direct line and approvals (≈16 s)
 
-![Scene 6: Direct line and approvals](assets/tutorial/6-direct-line.gif)
+![Scene 4: Direct line and approvals](assets/tutorial/4-direct-line.gif)
 
 | | |
 | --- | --- |
@@ -90,9 +78,9 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | **Caption** | Tag @session to reach a session outside your tree for one prompt. Approval badges show who is waiting on you. |
 | **Live demo** | Stress that the tag lasts one prompt; for anything lasting, group the session instead. Deployments are where approvals matter most. |
 
-## Scene 7 · Keep the tree healthy (≈12 s)
+## Scene 5 · Keep the tree healthy (≈12 s)
 
-![Scene 7: Keep the tree healthy](assets/tutorial/7-keep-it-healthy.gif)
+![Scene 5: Keep the tree healthy](assets/tutorial/5-keep-it-healthy.gif)
 
 | | |
 | --- | --- |
@@ -108,6 +96,6 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 - Four fictional repos: a `shop` monorepo that manages the apps, plus `shop-api`, `shop-web`,
   `shop-deploy` and a separate `shop-payments`. No real names on screen.
 - Cursor with only the PenguPool view open: Map and Log side by side, terminal panel at the bottom.
-- Create the sessions live (scenes 2–3), each in its own repo. The briefing in scene 4 is the point of the talk.
+- Add the agents beforehand (see the setup), each in its own repo, and group them live in scene 1. The briefing in scene 2 is the point of the talk.
 - Keep prompts short and on screen long enough to read. Pause on each `Triage:` line.
-- Have a small, fast task ready for `api`, and a staging target `deploy` can hit, so scenes 5–6 finish on stage.
+- Have a small, fast task ready for `api`, and a staging target `deploy` can hit, so scenes 3–4 finish on stage.

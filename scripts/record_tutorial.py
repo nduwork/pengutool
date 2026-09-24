@@ -17,12 +17,14 @@ from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs/assets/tutorial"
-NAMES = ["install", "start-a-pool", "group-the-children", "brief-the-parent", "ask-the-top", "direct-line", "keep-it-healthy"]
+NAMES = ["group-the-children", "brief-the-parent", "ask-the-top", "direct-line", "keep-it-healthy"]
 W, H = 1132, 700
 
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
     browser = p.chromium.launch(channel="chrome")
     OUT.mkdir(parents=True, exist_ok=True)
+    for old in OUT.glob("*.gif"):   # scenes are renumbered when the list changes
+        old.unlink()
     for n, name in enumerate(NAMES, 1):
         vdir = pathlib.Path(tmp) / str(n)
         # recorded at 2x (a 2x viewport with the page zoomed to 2, same layout): the video's 4:2:0 chroma
