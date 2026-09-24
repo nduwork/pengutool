@@ -93,8 +93,10 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   #wrap { position:absolute; inset:0; overflow:auto; }
   .edge { stroke: var(--vscode-descriptionForeground); stroke-opacity:.75; fill:none; stroke-width:2;
           stroke-linejoin:round; }  /* panel-border is a faint divider colour: edges vanished against it */
-  /* @session and other cross-tree messages: dashed, in the Log's orange */
-  .xedge { stroke:#f0883e; stroke-opacity:.85; fill:none; stroke-width:1.5; stroke-dasharray:4,4; }
+  /* a tree line lights up while a message travels on it: the Log's green down, milky blue for a reply */
+  .edge { transition: stroke 300ms, stroke-width 300ms; }
+  .edge.hot-down { stroke:#3fb950; stroke-opacity:1; stroke-width:3; }
+  .edge.hot-up { stroke:#9ecbff; stroke-opacity:1; stroke-width:3; }
   .elabel { fill: var(--vscode-descriptionForeground); font-size:9px; }
   .emask { fill: var(--vscode-editor-background); }   /* keeps the line from bleeding through a label */
   .node.lone .box { stroke-dasharray:4,4; }
@@ -145,16 +147,14 @@ ${HARNESS_TABS_HTML}
 <div id="tools">
   <button id="dir" title="Lay the map out top-down or left-right"></button>
   <button id="spacing" title="Space the cards compactly or roomily"></button>
-  <button id="msgs" title="Show or hide @session message lines"></button>
   <button id="refresh" title="Reload all sessions from disk and redraw the map">⟳ Refresh</button>
 </div>
 <div id="empty">no sessions</div>
-<div id="wrap"><svg id="svg" width="100%" height="100%"><defs>
-  <marker id="xarrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#f0883e"/></marker>
-</defs><g id="scene"></g></svg></div>
+<div id="wrap"><svg id="svg" width="100%" height="100%"><g id="scene"></g></svg></div>
 <div id="legend">
   <span><svg width="18" height="8"><path d="M0,4 H18" class="edge"/></svg>parent → child</span>
-  <span><svg width="18" height="8"><path d="M0,4 H18" class="xedge"/></svg>@session message</span>
+  <span><svg width="18" height="8"><path d="M0,4 H18" class="edge hot-down"/></svg>message sent</span>
+  <span><svg width="18" height="8"><path d="M0,4 H18" class="edge hot-up"/></svg>reply</span>
   <span><svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="2" class="box" style="stroke:var(--vscode-descriptionForeground); stroke-dasharray:3,2"/></svg>ungrouped</span>
 </div>
 <script nonce="${nonce}" src="${dagreUri}"></script>
@@ -169,19 +169,12 @@ ${HARNESS_TABS_HTML}
   ${CTX_LEVEL_JS}
   let topo = null, sizes = '', last = null;
   let selected = '';
-  const nodeEls = new Map();
+  const nodeEls = new Map(), edgeEls = new Map();   // edges keyed parent>child
 
   function flat(roots){ const o=[]; const w=n=>{o.push(n); n.children.forEach(w);}; roots.forEach(w); return o; }
-  // Tree edges parent → child, and cross edges between branches. A cross edge that runs along a tree
-  // edge (a child's reply to its parent) is left out: it would sit on top of that edge, and the Log has it.
-  function edges(roots, cross){
-    const byName = {}; const tree = [], xs = [], along = new Set();
-    flat(roots).forEach(n => byName[n.name]=n.id);
-    const w = n => n.children.forEach(c => { tree.push([n.id, c.id, c.label||'']); along.add(n.id+'>'+c.id); along.add(c.id+'>'+n.id); w(c); });
-    roots.forEach(w);
-    (cross||[]).forEach(([s,d,l]) => { const a=byName[s], b=byName[d];
-      if(a && b && !along.has(a+'>'+b)) xs.push([a, b, l||'']); });
-    return { tree, cross: xs };
+  function edges(roots){
+    const tree = []; const w = n => n.children.forEach(c => { tree.push([n.id, c.id, c.label||'']); w(c); });
+    roots.forEach(w); return tree;
   }
   // A path through right-angle points with each bend rounded (r=6, less where a segment is short).
   function rounded(pts){
@@ -196,61 +189,23 @@ ${HARNESS_TABS_HTML}
     }
     const e = pts[pts.length-1]; return d+' L'+e[0]+','+e[1];
   }
-  // Map options, kept per panel: direction, spacing, and whether @session lines are drawn.
+  // Map options, kept per panel: direction and spacing.
   const LAYOUTS = { TB:'↓ Top-down', LR:'→ Left-right' }, SPACINGS = { compact:'Compact', roomy:'Roomy' };
-  const opts = Object.assign({ dir:'TB', spacing:'compact', msgs:true }, vscode.getState?.()?.opts);
+  const opts = Object.assign({ dir:'TB', spacing:'compact' }, vscode.getState?.()?.opts);
   function spacing(){ const roomy = opts.spacing==='roomy';
-    return opts.dir==='TB' ? { nodesep: roomy ? 40 : 24, ranksep: roomy ? 88 : 56 }
+    return opts.dir==='TB' ? { nodesep: roomy ? 40 : 24, ranksep: roomy ? 80 : 48 }
                            : { nodesep: roomy ? 28 : 16, ranksep: roomy ? 200 : 136 }; }  // LR: labels run along
-  // Only the tree goes to dagre, so an @session line never bends the tree. Lines are routed on the laid-out
-  // cards: a tree edge leaves the parent, turns on a bus 16px out (shared by the siblings) and runs into the
-  // child. An @session line turns in the gaps between ranks and crosses ranks only in a lane no card
-  // touches, attaching 16px off the cards' centre lines, on the side away from the labels and the tree's strokes.
-  function geometry(boxes, lone, laneX){
-    const H = opts.dir==='TB', ids = Object.keys(boxes);
-    const cards = ids.map(id => { const n=boxes[id];
-      return { id, main:H?n.y:n.x, side:H?n.x:n.y, hm:(H?n.height:n.width)/2, hs:(H?n.width:n.height)/2 }; });
-    const ranks = {}; cards.filter(c => !lone.has(c.id)).forEach(c => { const k=Math.round(c.main); ranks[k]=Math.max(ranks[k]||0, c.hm); });
-    const centres = Object.keys(ranks).map(Number).sort((a,b)=>a-b);
-    const pt = (m, s) => H ? [s, m] : [m, s];
-    const at = id => cards[ids.indexOf(id)];
-    // the gap on the sgn side of the rank at centre c (past the last rank: 12px beyond it)
-    const gap = (c, sgn) => { const k=Math.round(c), next=centres[centres.indexOf(k)+sgn];
-      return next===undefined ? k+sgn*(ranks[k]+12) : (k+sgn*ranks[k] + next-sgn*ranks[next])/2; };
-    const clear = (s, m1, m2) => cards.every(c => Math.abs(c.side-s) > c.hs+4 || Math.max(m1,m2) < c.main-c.hm || Math.min(m1,m2) > c.main+c.hm);
-    return { pt, at, gap, clear, cards, H, box: id => boxes[id], lone, laneX };
+  // Lines are routed on the laid-out cards: a tree edge leaves the parent, turns on a bus 16px out
+  // (shared by the siblings) and runs into the child.
+  // Card boxes in rank-axis terms: main runs along the tree's direction, side across it.
+  function geometry(boxes){
+    const H = opts.dir==='TB';
+    const at = id => { const n=boxes[id]; return { main:H?n.y:n.x, side:H?n.x:n.y, hm:(H?n.height:n.width)/2 }; };
+    return { pt: (m, s) => H ? [s, m] : [m, s], at };
   }
   function treeRoute(G, a, b){
     const A=G.at(a), B=G.at(b), bus=A.main+A.hm+16;
     return [G.pt(A.main+A.hm, A.side), G.pt(bus, A.side), G.pt(bus, B.side), G.pt(B.main-B.hm, B.side)];
-  }
-  // To or from the ungrouped column: leave the tree card into the gap past its rank, run along the gap
-  // (LR: then the top margin) to the lane left of the column, and into the ungrouped card's left edge.
-  // k spreads several such lines apart so none shares a stroke.
-  const lanes6 = k => (k%3 - 1)*6;   // ponytail: 3 offsets; a 4th line in one gap may share a stroke
-  function loneRoute(G, a, b, k){
-    if(G.lone.has(a) && !G.lone.has(b)) return loneRoute(G, b, a, k).reverse();
-    const L = G.box(b), lane = G.laneX - 5*(k%3), ly = L.y + Math.min(5*(k%3), L.height/2-6), end = [L.x-L.width/2, ly];
-    if(G.lone.has(a)){ const A=G.box(a); return [[A.x-A.width/2, A.y], [lane, A.y], [lane, ly], end]; }
-    const A = G.at(a), sa = A.side + (G.H ? -1 : 1)*Math.min(16, A.hs-8), gp = G.gap(A.main, 1) + lanes6(k);
-    const start = G.pt(A.main+A.hm, sa);
-    return G.H ? [start, G.pt(gp, sa), [lane, gp], [lane, ly], end]
-               : [start, G.pt(gp, sa), [gp, 8+5*(k%3)], [lane, 8+5*(k%3)], [lane, ly], end];
-  }
-  function crossRoute(G, a, b, k){
-    if(G.lone.has(a) || G.lone.has(b)) return loneRoute(G, a, b, k);
-    const A=G.at(a), B=G.at(b);
-    const off = (opts.dir==='TB' ? -1 : 1) * 16;   // the side away from the labels: right of a TB drop, above an LR line
-    const sa = A.side + Math.sign(off)*Math.min(16, A.hs-8), sb = B.side + Math.sign(off)*Math.min(16, B.hs-8);
-    const sgn = B.main > A.main+1 ? 1 : B.main < A.main-1 ? -1 : 1;           // same rank: go round below
-    const ya = G.gap(A.main, sgn) + lanes6(k), yb = Math.abs(B.main-A.main) <= 1 ? ya : G.gap(B.main, -sgn) + lanes6(k);
-    const start = G.pt(A.main+sgn*A.hm, sa), end = G.pt(Math.abs(B.main-A.main) <= 1 ? B.main+sgn*B.hm : B.main-sgn*B.hm, sb);
-    if(Math.abs(ya-yb) < 1) return [start, G.pt(ya, sa), G.pt(ya, sb), end];
-    // a lane from ya to yb that no card touches: prefer one near the two ends; a lane beside any card works
-    const lanes = [sa, sb, ...G.cards.flatMap(c => [c.side-c.hs-10, c.side+c.hs+10])]
-      .filter(s => G.clear(s, ya, yb)).sort((p,q) => Math.abs(p-sa)+Math.abs(p-sb) - Math.abs(q-sa)-Math.abs(q-sb));
-    const lane = lanes.length ? lanes[0] : sa;
-    return [start, G.pt(ya, sa), G.pt(ya, lane), G.pt(yb, lane), G.pt(yb, sb), end];
   }
   // Card size MEASURED from the real fonts (dagre needs sizes before layout): an offscreen card holds
   // the same content and styles. ctx% is sized as "100%" so a changing percentage never relayouts.
@@ -272,7 +227,7 @@ ${HARNESS_TABS_HTML}
   function hel(tag, attrs){ const e=document.createElementNS(HTMLNS,tag); for(const k in attrs) e.setAttribute(k, attrs[k]); return e; }
 
   function relayout(snap){
-    scene.innerHTML=''; nodeEls.clear();
+    scene.innerHTML=''; nodeEls.clear(); edgeEls.clear();
     const nodes = flat(snap.roots);
     empty.style.display = nodes.length ? 'none' : 'flex';
     legend.style.display = nodes.length ? 'flex' : 'none';
@@ -284,8 +239,8 @@ ${HARNESS_TABS_HTML}
     const g = new dagre.graphlib.Graph(); g.setGraph({rankdir:opts.dir, ...spacing(), marginx:24, marginy:24});
     g.setDefaultEdgeLabel(()=>({}));
     nodes.forEach(n => { if(!lone.has(n.id)) g.setNode(n.id, cardSize(n)); });
-    const es = edges(snap.roots, opts.msgs ? snap.cross : []);
-    es.tree.forEach(([a,b]) => g.setEdge(a,b));
+    const tree = edges(snap.roots);
+    tree.forEach(([a,b]) => g.setEdge(a,b));
     dagre.layout(g);
     const gr = g.graph(), boxes = {};
     g.nodes().forEach(id => { boxes[id] = g.node(id); });
@@ -299,11 +254,10 @@ ${HARNESS_TABS_HTML}
         boxes[n.id] = { width: c.width, height: c.height, x: colX + c.width/2, y: cy + c.height/2 }; cy += c.height + 16; });  // left-aligned: a card grows to the right; the gap stays 16px
       width = colX + colW + 24; height = Math.max(height, cy + 8);
     }
-    const G = geometry(boxes, lone, colX - 8);
-    // edges first (under nodes)
-    es.cross.forEach(([a,b], k) => scene.appendChild(el('path', {class:'xedge', d:rounded(crossRoute(G, a, b, k)), 'marker-end':'url(#xarrow)'})));
-    const routes = es.tree.map(([a,b,l]) => { const pts=treeRoute(G, a, b);
-      scene.appendChild(el('path', {class:'edge', d:rounded(pts)})); return [pts, l, boxes[b]]; });
+    const G = geometry(boxes);
+    // edges first (under nodes); restyle lights them up as messages travel
+    const routes = tree.map(([a,b,l]) => { const pts=treeRoute(G, a, b), path=el('path', {class:'edge', d:rounded(pts)});
+      scene.appendChild(path); edgeEls.set(a+'>'+b, path); return [pts, l, boxes[b]]; });
     // labels over the edges, each on a mask 6px off the last segment into the child, cut to the room there
     routes.forEach(([pts, l, c]) => { if(!pts || !l) return;
       const [j, end] = pts.slice(-2), H = opts.dir==='TB';
@@ -311,7 +265,7 @@ ${HARNESS_TABS_HTML}
       let text = l; while(text.length > 1 && textW(text,'elabel') > room) text = text.slice(0,-2)+'…';
       if(text.length < 3) return;
       const w = Math.ceil(textW(text,'elabel'));
-      const x = H ? j[0]+6 : Math.min(j[0],end[0])+6, y = H ? end[1]-18 : j[1]-18;   // 6px off the child (TB) or the line (LR): the gap's middle stays free for @ lines
+      const x = H ? j[0]+6 : Math.min(j[0],end[0])+6, y = H ? end[1]-18 : j[1]-18;   // 6px off the child (TB) or above the line (LR)
       scene.appendChild(el('rect', {class:'emask', x, y, width:w+4, height:12, rx:2}));
       const t=el('text',{class:'elabel', x:x+2, y:y+9}); t.textContent=text; scene.appendChild(t);
       const tip=el('title',{}); tip.textContent=l; t.appendChild(tip); });
@@ -339,7 +293,20 @@ ${HARNESS_TABS_HTML}
     document.getElementById('svg').setAttribute('width', width); document.getElementById('svg').setAttribute('height', height);
   }
 
-  function restyle(snap){
+  // A tree line stays lit for HOT_MS after the latest message on it: green parent → child, blue for the
+  // reply. Messages between sessions that aren't parent and child stay in the Log only.
+  const HOT_MS = 90000;
+  function restyleEdges(snap, now){
+    const id = {}; flat(snap.roots).forEach(n => { id[n.name] = n.id; });
+    const hot = {};
+    (snap.msgs||[]).forEach(([ts, src, dst]) => { const a=id[src], b=id[dst], t=Date.parse(ts);
+      if(!a || !b || !(now - t < HOT_MS)) return;
+      const k = edgeEls.has(a+'>'+b) ? a+'>'+b : edgeEls.has(b+'>'+a) ? b+'>'+a : '';
+      if(k && !(hot[k] && hot[k].t > t)) hot[k] = { t, dir: k === a+'>'+b ? 'hot-down' : 'hot-up' }; });
+    edgeEls.forEach((path, k) => path.setAttribute('class', 'edge' + (hot[k] ? ' '+hot[k].dir : '')));
+  }
+  function restyle(snap, now = Date.now()){
+    restyleEdges(snap, now);
     flat(snap.roots).forEach(n => {
       const e = nodeEls.get(n.id); if(!e) return;
       const visual=states[n.state]||{symbol:'·',label:n.state};
@@ -377,14 +344,14 @@ ${HARNESS_TABS_HTML}
   function showOpts(){
     document.getElementById('dir').textContent = LAYOUTS[opts.dir];
     document.getElementById('spacing').textContent = SPACINGS[opts.spacing];
-    document.getElementById('msgs').textContent = opts.msgs ? '@ lines: on' : '@ lines: off';
   }
   function setOpt(k, v){ opts[k] = v; vscode.setState?.({ opts }); showOpts(); redraw(); }
   document.getElementById('dir').addEventListener('click', () => setOpt('dir', opts.dir==='TB' ? 'LR' : 'TB'));
   document.getElementById('spacing').addEventListener('click', () => setOpt('spacing', opts.spacing==='compact' ? 'roomy' : 'compact'));
-  document.getElementById('msgs').addEventListener('click', () => setOpt('msgs', !opts.msgs));
   showOpts();
   document.getElementById('refresh').addEventListener('click', () => { fresh = true; redraw(); vscode.postMessage({type:'refresh'}); });
+  // snapshots arrive only when something changes, so a quiet pool still needs its lit lines to go out
+  window.setInterval?.(() => { if(last) restyleEdges(last, Date.now()); }, 5000);
   document.fonts?.ready.then(redraw);   // sizes measured before the editor font loaded are wrong
   vscode.postMessage({type:'ready'});
 </script></body></html>`;

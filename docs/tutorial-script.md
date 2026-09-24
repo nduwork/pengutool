@@ -75,7 +75,7 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | | |
 | --- | --- |
 | **Shot** | Map and Log side by side, terminal on `lead`. |
-| **Action** | Type *"Add token refresh to login."* `lead` replies `Triage: → api, web` and sends two messages. The Log shows green `lead ⇢ api` and `lead ⇢ web`; the `api` and `web` cards turn Active; the workflow chain appears: `[ship-auth] api ● → web ○ → deploy ○`. `api` finishes: blue `api ⇢ lead: endpoint done, tests pass`, and the chain moves to `api ✓ → web ●`. |
+| **Action** | Type *"Add token refresh to login."* `lead` replies `Triage: → api, web` and sends two messages. The Log shows green `lead ⇢ api` and `lead ⇢ web`, and the same lines light green on the map; the `api` and `web` cards turn Active; the workflow chain appears: `[ship-auth] api ● → web ○ → deploy ○`. `api` finishes: blue `api ⇢ lead: endpoint done, tests pass` (the `lead`–`api` line turns milky blue), and the chain moves to `api ✓ → web ●`. |
 | **Caption** | Talk to the top. Triage routes each part to the repo session that owns it. |
 | **Live demo** | Point at the `Triage:` line. It's how you see the decision before any work happens. |
 

@@ -69,23 +69,21 @@
       el.innerHTML = `<div class="st">${lead ? '<span class="chip">LEAD</span>' : ''}${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
         + `<div class="meta">${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}%</span></div>${chain}`;
     }
+    // tree lines; the last two messages light theirs as the real map does: green down, milky blue for a reply
+    const lit = { lg: '', lb: '' }, recent = S.logs.slice(-2);
     let d = '';
     for (const s of S.sessions.filter((x) => x.h === 'cc' && x.parent)) {
       const a = pos[s.parent], b = pos[s.id]; if (!a || !b) continue;
-      d += `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `;
+      const seg = `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `; d += seg;
+      const m = recent.filter((l) => (l.src === s.parent && l.dst === s.id) || (l.src === s.id && l.dst === s.parent)).pop();
+      if (m) lit[m.src === s.parent ? 'lg' : 'lb'] += seg;
     }
     $('.edges path').setAttribute('d', d);
+    $('.edges path.g').setAttribute('d', lit.lg); $('.edges path.b').setAttribute('d', lit.lb);
     // the ungrouped column: left-aligned, the same 12px gap between cards whatever their heights
     let top = 50;
     pane.querySelectorAll('.card.col').forEach((c) => { c.style.top = top + 'px'; top += c.offsetHeight + 12; });
     $('.ucol').hidden = !pane.querySelector('.card.col');
-    // the latest message, when it is an @session line across the tree: dashed orange, run under the row of
-    // cards (never behind one) and up into the other card; the path starts and ends under the cards
-    const x = S.logs[S.logs.length - 1], xa = x && x.c === 'lo' && pos[x.src], xb = x && x.c === 'lo' && pos[x.dst];
-    const into = (id, b) => { const c = pane.querySelector(`[data-id="${id}"]`);   // an ungrouped card: into its left edge
-      if (!b.col || !c) return `H${b.x} V${b.y + 10}`;
-      const m = (c.offsetTop + c.offsetHeight / 2) / pane.offsetHeight * 100; return `H77.5 V${m} H${b.x}`; };
-    $('.edges path.x').setAttribute('d', xa && xb ? `M${xa.x} ${xa.y + 10} V92 ${into(x.dst, xb)}` : '');
     const empty = !S.sessions.some((x) => x.h === 'cc');
     $('.map-empty').hidden = !empty;
   }

@@ -46,7 +46,7 @@ kbd{border:1px solid #ffffff2a}
 .edges{position:absolute;inset:0;width:100%;height:100%}
 .edges path{fill:none;stroke:#7d95a1;stroke-width:2;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .card{position:absolute;box-sizing:border-box;background:#17222d;border:1.5px solid var(--st);border-radius:6px;padding:6px 9px;line-height:14px;overflow:hidden}
-.edges path.x{stroke:#f0883e;stroke-width:1.5;stroke-dasharray:4 4}
+.edges path.g{stroke:#3fb950;stroke-width:3}.edges path.b{stroke:#9ecbff;stroke-width:3}
 .card.lone{border-style:dashed}
 .cards .card.col{transform:none;width:auto!important;min-width:18%;max-width:21%}
 .ucol{position:absolute;left:75.5%;top:34px;bottom:10px;padding-left:1.5%;border-left:1px solid #2e3f4c;font-size:8.5px;letter-spacing:.14em;color:#6f8591}

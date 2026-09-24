@@ -49,9 +49,9 @@ The list and map share state cues: `● Active`, `◷ Waiting`, `○ Stale`, and
 The map marks the selected session with a separate focus outline. The top of each tree carries a `LEAD`
 tag. Sessions outside every tree have a dashed border and stack in an **Ungrouped** column on the right,
 left-aligned with an even gap between them, so they never mix into a tree. Lines meet at right angles and never pass
-behind a card: tree lines are solid, and `@session` messages between branches are dashed orange. The map
-toolbar switches between **Top-down** and **Left-right**, between **Compact** and **Roomy** spacing, and turns
-`@session` lines on or off. The map remembers these choices.
+behind a card. When a parent messages a child, the line between them lights green for 90 seconds, and it turns
+milky blue when the child replies (the Log's colours). The map toolbar switches between **Top-down** and
+**Left-right** and between **Compact** and **Roomy** spacing, and the map remembers both.
 
 When creating a session, PenguPool asks whether to create an isolated worktree or use the selected
 folder, then which harness to run: Claude Code or pi. Several sessions can share a folder, so using the

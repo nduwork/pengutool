@@ -286,6 +286,7 @@ function drawMap(snap, at) {
   vm.runInContext(script, sandbox);
   sandbox.snap = snap;
   vm.runInContext('relayout(snap)', sandbox);
+  drawMap.sandbox = sandbox;
   return scene.children;
 }
 
@@ -315,13 +316,22 @@ test('map tree edges are right-angled paths with a masked label beside the drop'
   assert.ok(out.indexOf(mask) > out.indexOf(paths[1]), 'labels are drawn over the edges');
 });
 
-test('map leaves out replies along the tree and dashes true cross messages', () => {
-  const pay = cc('p', 'payments');
-  const out = drawMap({ roots: [lead, pay], cross: [['api', 'lead', 'done'], ['web', 'payments', 'logout?']] }, at);
-  const xs = out.filter((e) => e.className === 'xedge');
-  assert.equal(xs.length, 1, 'only web → payments');
-  assert.ok(rightAngled(xs[0].attrs.d), xs[0].attrs.d);
-  assert.equal(xs[0].attrs['marker-end'], 'url(#xarrow)');
+test('map lights a tree line green for a message and milky blue for the reply, then lets it fade', () => {
+  const now = Date.parse('2026-09-23T12:00:00Z'), ago = (s) => new Date(now - s * 1000).toISOString();
+  const msgs = [[ago(10), 'lead', 'api', 'add the endpoint', false], [ago(5), 'api', 'lead', 'done', false],
+                [ago(20), 'lead', 'web', 'wire the form', false], [ago(300), 'lead', 'deploy', 'old', false],
+                [ago(3), 'web', 'payments', '@ question', false]];
+  const snap = { roots: [lead, cc('p', 'payments')], cross: [], msgs };
+  const out = drawMap(snap, at);
+  drawMap.sandbox.snap = snap;
+  vm.runInContext(`restyle(snap, ${now})`, drawMap.sandbox);
+  const edges = out.filter((e) => /\bedge\b/.test(e.className));
+  assert.equal(edges.length, 2, 'tree lines only; no line for the @ message to an ungrouped session');
+  const [toApi, toWeb] = edges;   // tree order: lead>api, lead>web
+  assert.match(toApi.className, /hot-up/, 'the latest message on lead–api is the reply');
+  assert.match(toWeb.className, /hot-down/);
+  vm.runInContext(`restyle(snap, ${now + 120000})`, drawMap.sandbox);
+  assert.ok(edges.every((e) => e.className === 'edge'), 'back to plain after the hot window');
 });
 
 test('map marks the lead of a tree and dashes ungrouped sessions', () => {
@@ -338,7 +348,7 @@ test('map marks the lead of a tree and dashes ungrouped sessions', () => {
   assert.ok(solo.filter((e) => /\bnode\b/.test(e.className)).every((c) => !/\blone\b/.test(c.className)));
 });
 
-test('map options switch direction and hide @session lines, and stay across redraws', () => {
+test('map options switch direction and spacing, and stay across redraws', () => {
   const pay = cc('p', 'payments');
   const snap = { roots: [lead, pay], cross: [['web', 'payments', 'logout?']] };
   // left-right: tree edges leave the parent's right side and bend in the gap between the columns
@@ -346,7 +356,7 @@ test('map options switch direction and hide @session lines, and stay across redr
   const h = loadPanel('mapPanel');
   h.exports.MapPanel.show({ extensionUri: 'extension' }, snapshot, 1);
   const script = [...h.html().matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)[1];
-  let state = { opts: { dir: 'LR', msgs: false } };
+  let state = { opts: { dir: 'LR' } };
   const dom = fakeDom(); const scene = dom.getElementById('scene');
   dom.getElementById = (id) => (id === 'scene' ? scene : fakeDom().body);
   const sandbox = { acquireVsCodeApi: () => ({ postMessage() {}, getState: () => state, setState: (s) => { state = s; } }),
@@ -358,14 +368,13 @@ test('map options switch direction and hide @session lines, and stay across redr
   assert.equal(paths.length, 2);
   for (const p of paths) assert.ok(rightAngled(p.attrs.d), p.attrs.d);
   assert.match(paths[0].attrs.d, /^M\d+(\.\d+)?,150 /, 'starts on the lead card, at its centre line');
-  assert.equal(scene.children.filter((e) => e.className === 'xedge').length, 0, '@ lines hidden');
-  vm.runInContext("setOpt('msgs', true)", sandbox);
-  assert.equal(state.opts.msgs, true, 'saved in the webview state');
+  vm.runInContext("setOpt('spacing', 'roomy')", sandbox);
+  assert.equal(state.opts.spacing, 'roomy', 'saved in the webview state');
   assert.equal(state.opts.dir, 'LR');
 });
 
 test('map stacks ungrouped sessions in one aligned column right of the trees', () => {
-  const out = drawMap({ roots: [lead, cc('p', 'payments'), cc('q', 'billing')], cross: [['web', 'payments', 'logout?']] }, at);
+  const out = drawMap({ roots: [lead, cc('p', 'payments'), cc('q', 'billing')], cross: [] }, at);
   const card = (n) => out.find((c) => c.attrs['aria-label'] === 'Open ' + n);
   const pos = (n) => card(n).attrs.transform.match(/translate\(([-\d.]+),([-\d.]+)\)/).slice(1).map(Number);
   const [px, py] = pos('payments'), [qx, qy] = pos('billing');
@@ -373,6 +382,4 @@ test('map stacks ungrouped sessions in one aligned column right of the trees', (
   assert.ok(px > 300, 'right of the tree');
   assert.ok(qy - py >= 16, 'stacked with gaps');
   assert.ok(out.some((e) => e.className === 'eyebrow' && e.textContent === 'UNGROUPED'));
-  const x = out.find((e) => e.className === 'xedge');
-  assert.ok(rightAngled(x.attrs.d), x.attrs.d);
 });
