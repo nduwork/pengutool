@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-09-24
+
+### Fixed
+- refuse socket-addressed sends and announce regroups to affected sessions
+- clarify hook text on replies, Triage line, denied actions and role adoption
 ## [0.3.3] - 2026-09-24
 
 ### Changed
