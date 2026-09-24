@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-24
+
 ### Changed
 - Routing is a hint, not a gate. A prompt that matches a child still gets `ROUTE CHECK` (was `ROUTE REQUIRED`) with the words that matched, but the Stop hook no longer blocks the turn when the child wasn't messaged, and no per-prompt route state is kept. The `SendMessage` guard (parent and direct children only) is unchanged.
 
@@ -12,7 +14,6 @@ All notable changes to this project are documented here. The format follows
 - A message from another session, an idle notice or a subagent report is no longer read as the user's request: it caused "routing skipped" at Stop for the very child that had just replied, and an `@name` in it could open a direct line.
 - A reply that arrives while an `@session` line is open no longer closes that line, so the tagged session can keep answering.
 - The `SendMessage` guard, and pi's intercom check, block only a send they checked and found non-adjacent. When PenguPool can't read the tree (a file mid-write, a crash, a timeout), the guard retries briefly and then lets the message through, instead of blocking every send.
-
 ## [0.3.2] - 2026-09-23
 
 ### Fixed
