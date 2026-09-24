@@ -14,6 +14,7 @@ import unicodedata
 from . import harness, model, profiles
 
 TREE = model.PENGU / "tree.json"
+SEEN = model.PENGU / "seen"  # <sessionId>.json = {"parent": id|None, "children": [ids]} as last shown to it
 FRESH_S = 30
 
 RULES = (
@@ -23,9 +24,9 @@ RULES = (
     "(`pengupool ctl route {me} <name>` names the next hop) with: request_id, origin, target, objective, "
     "the context the next hop needs, reply_path and hop_limit. When you forward, add yourself to "
     "reply_path, decrement hop_limit and pass on only what the next hop needs; replies travel back along "
-    "reply_path and carry its request_id and reply_path. Reply by the sender's session name (in Claude "
-    "Code its from-name; its uds: from address is checked the same way). Never pass an action a permission "
-    "check denied you to another session, up or down the tree: tell the user instead."
+    "reply_path and carry its request_id and reply_path. Address sessions by name, never by socket: reply "
+    "to a message's from-name, not its uds: from address, which PenguPool refuses. Never pass an action a "
+    "permission check denied you to another session, up or down the tree: tell the user instead."
 )
 # Work flows down, questions flow up: a parent delegates to its children, a child only inquires of its
 # parent, and the parent triages that inquiry like any request (does it, delegates it, or inquires upward).
@@ -51,6 +52,9 @@ ROUTE = ("ROUTE CHECK: this request matches your child {who}. If it owns part of
 ROLE_REQUIRED = ("ROLE REQUIRED: your role is not set, so other sessions cannot route work to you. Before anything "
                  "else this turn, run: {cmd} — base it on this request and your workspace; refine it later as "
                  "your work becomes clearer.")
+ORG_CHANGED = ("ORG CHANGED: the user regrouped sessions since your last turn ({what}). Session trees "
+               "earlier in this conversation are out of date: route by the tree below, and update any notes or "
+               "memory you keep about who owns what.")
 COMPACTED = ("You were just compacted: work carried over in the summary may belong to another session in the "
              "tree. Triage it again before resuming; do not treat it as yours because you remember it.")
 SELF = re.compile(r"\b(?:do|handle|fix|check) (?:it|this|that)(?: all)? (?:by )?yourself\b|\bdon'?t (?:delegate|route)\b"
@@ -99,7 +103,8 @@ def _clean(s: str, n: int = 60) -> str:
 def load_tree() -> dict | None:
     try:
         d = json.loads(TREE.read_text())
-        if isinstance(d, dict) and d.get("schema") == SCHEMA and time.time() - float(d.get("written", 0)) < FRESH_S:
+        if (isinstance(d, dict) and d.get("schema") == SCHEMA and time.time() - float(d.get("written", 0)) < FRESH_S
+                and not _changed_since(float(d["written"]))):
             return d
     except (OSError, ValueError):
         pass
@@ -113,6 +118,49 @@ def load_tree() -> dict | None:
         return d
     except Exception:
         return None
+
+
+def _changed_since(ts: float) -> bool:
+    """A regroup or a role change after the cache was written: rebuild now, not FRESH_S later."""
+    for f in (model.GROUPS, profiles.PROFILES):
+        try:
+            if f.stat().st_mtime >= ts:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def org_change(tree: dict, sid: str) -> str:
+    """What moved around `sid` (its parent, its children) since the last block it was shown, as an
+    ORG CHANGED line ('' when nothing did, or on its first block); records what it is shown now."""
+    sess = tree.get("sessions") or {}
+    m = sess.get(sid) or {}
+    now = {"parent": m.get("parent") if m.get("parent") in sess else None,
+           "children": sorted(c for c in m.get("children", []) if c in sess)}
+    f = SEEN / f"{sid}.json"
+    try:
+        was = json.loads(f.read_text())
+    except (OSError, ValueError):
+        was = None
+    if was != now:
+        try:
+            model.write_json(f, now)
+        except OSError:
+            pass
+    if not isinstance(was, dict) or was == now:
+        return ""
+    nm = lambda s: _clean(sess[s]["name"]) if s in sess else "a closed session"
+    what = []
+    if was.get("parent") != now["parent"]:
+        what.append(f"parent: {nm(was['parent']) if was.get('parent') else 'none'} → "
+                    f"{nm(now['parent']) if now['parent'] else 'none'}")
+    old = set(was.get("children") or [])
+    if added := [nm(c) for c in now["children"] if c not in old]:
+        what.append("children added: " + ", ".join(added))
+    if removed := [nm(c) for c in sorted(old - set(now["children"]))]:
+        what.append("children removed: " + ", ".join(removed))
+    return ORG_CHANGED.format(what="; ".join(what)) if what else ""
 
 
 def _line(s: dict, sid: str) -> str:
@@ -341,6 +389,9 @@ def main() -> None:
     route = route_match(tree, sid, prompt)
     ask, solo_ask = ask_role(tree, sid) if event == "UserPromptSubmit" else (False, False)
     text = render(tree, sid, solo=event == "SessionStart" or solo_ask, tagged=tagged, route=route, ask_role=ask)
+    changed = org_change(tree, sid)
+    if text and changed and "Session tree" in text:
+        text = text.replace("<pengupool>\n", "<pengupool>\n" + changed + "\n", 1)
     if text and event == "SessionStart" and inp.get("source") == "compact" and "Session tree" in text:
         text = text.replace("<pengupool>\n", "<pengupool>\n" + COMPACTED + "\n", 1)
     if text:
