@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- light tree lines green for a message, milky blue for the reply
+- ungrouped sessions stack in a left-aligned column on the right
+- right-angle routing that never crosses a card, plus layout options
+
+Ships with PenguPool v0.3.0.
+
 ## 0.1.1
 
 - terminals, shortcuts, rename/compact; clearer map
