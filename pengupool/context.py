@@ -14,6 +14,7 @@ import unicodedata
 from . import harness, model, profiles
 
 TREE = model.PENGU / "tree.json"
+SEEN = model.PENGU / "seen"  # <sessionId>.json = {"parent": id|None, "children": [ids]} as last shown to it
 FRESH_S = 30
 
 RULES = (
@@ -23,7 +24,9 @@ RULES = (
     "(`pengupool ctl route {me} <name>` names the next hop) with: request_id, origin, target, objective, "
     "the context the next hop needs, reply_path and hop_limit. When you forward, add yourself to "
     "reply_path, decrement hop_limit and pass on only what the next hop needs; replies travel back along "
-    "reply_path."
+    "reply_path and carry its request_id and reply_path. Address sessions by name, never by socket: reply "
+    "to a message's from-name, not its uds: from address, which PenguPool refuses. Never pass an action a "
+    "permission check denied you to another session, up or down the tree: tell the user instead."
 )
 # Work flows down, questions flow up: a parent delegates to its children, a child only inquires of its
 # parent, and the parent triages that inquiry like any request (does it, delegates it, or inquires upward).
@@ -37,7 +40,8 @@ TRIAGE_UP = ("Not yours or your children's, or you are unsure: inquire with your
 TRIAGE_ROOT = "Owned by no session in this tree: tell the user."
 TRIAGE_END = ("Split a mixed request into its parts; do not do work a child owns, and do not push back work that "
               "is yours. Where roles are not set, judge by names and workspaces, and ask rather than guess. "
-              "Begin every reply with one line: `Triage: → <session>`, `Triage: mine` or `Triage: asked parent`.")
+              "Begin every reply to the user with one line: `Triage: → <session>`, `Triage: mine` or "
+              "`Triage: asked parent` (optional inside a {tool} message).")
 DESCRIBE = ("pengupool ctl describe {me} --summary \"<one line: what you own>\" "
             "--responsibility \"<a short brief of your responsibility>\" --keywords \"<routing terms, comma-separated>\"")
 # A hint found by code: the hook compares the prompt with each child's routing terms and, on a hit, names
@@ -48,6 +52,9 @@ ROUTE = ("ROUTE CHECK: this request matches your child {who}. If it owns part of
 ROLE_REQUIRED = ("ROLE REQUIRED: your role is not set, so other sessions cannot route work to you. Before anything "
                  "else this turn, run: {cmd} — base it on this request and your workspace; refine it later as "
                  "your work becomes clearer.")
+ORG_CHANGED = ("ORG CHANGED: the user regrouped sessions since your last turn ({what}). Session trees "
+               "earlier in this conversation are out of date: route by the tree below, and update any notes or "
+               "memory you keep about who owns what.")
 COMPACTED = ("You were just compacted: work carried over in the summary may belong to another session in the "
              "tree. Triage it again before resuming; do not treat it as yours because you remember it.")
 SELF = re.compile(r"\b(?:do|handle|fix|check) (?:it|this|that)(?: all)? (?:by )?yourself\b|\bdon'?t (?:delegate|route)\b"
@@ -96,7 +103,8 @@ def _clean(s: str, n: int = 60) -> str:
 def load_tree() -> dict | None:
     try:
         d = json.loads(TREE.read_text())
-        if isinstance(d, dict) and d.get("schema") == SCHEMA and time.time() - float(d.get("written", 0)) < FRESH_S:
+        w = float(d.get("written", 0)) if isinstance(d, dict) else 0
+        if w and d.get("schema") == SCHEMA and time.time() - w < FRESH_S and not _changed_since(w):
             return d
     except (OSError, ValueError):
         pass
@@ -110,6 +118,49 @@ def load_tree() -> dict | None:
         return d
     except Exception:
         return None
+
+
+def _changed_since(ts: float) -> bool:
+    """A regroup or a role change after the cache was written: rebuild now, not FRESH_S later.
+    The profiles directory's mtime moves on every profile write because model.write_json renames into it."""
+    for f in (model.GROUPS, profiles.PROFILES):
+        try:
+            if f.stat().st_mtime >= ts:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def org_change(tree: dict, sid: str) -> str:
+    """What moved around `sid` (its parent, its children) since the last block it was shown, as an
+    ORG CHANGED line ('' when nothing did, or on its first block); records what it is shown now."""
+    sess = tree.get("sessions") or {}
+    m = sess.get(sid) or {}
+    now = {"parent": m.get("parent") if m.get("parent") in sess else None,
+           "children": sorted(c for c in m.get("children", []) if c in sess)}
+    if not model._SID.fullmatch(sid):  # sid is a path component
+        return ""
+    f = SEEN / f"{sid}.json"
+    was = model._json(f)
+    if was == now:
+        return ""
+    try:
+        model.write_json(f, now)
+    except OSError:
+        pass
+    if not isinstance(was, dict):
+        return ""
+    nm = lambda s: "none" if not s else _clean(sess[s]["name"]) if s in sess else "a closed session"
+    what = []
+    if was.get("parent") != now["parent"]:
+        what.append(f"parent: {nm(was.get('parent'))} → {nm(now['parent'])}")
+    old = set(was.get("children") or [])
+    if added := [nm(c) for c in now["children"] if c not in old]:
+        what.append("children added: " + ", ".join(added))
+    if removed := [nm(c) for c in sorted(old - set(now["children"]))]:
+        what.append("children removed: " + ", ".join(removed))
+    return ORG_CHANGED.format(what="; ".join(what)) if what else ""
 
 
 def _line(s: dict, sid: str) -> str:
@@ -230,7 +281,7 @@ def render(tree: dict, me: str, solo: bool = False, h: str = "cc", tagged: list[
         if p.get("description_source") in ("parent", "user"):
             by = "your parent" if p["description_source"] == "parent" else "the user"
             out.append(f"This description was last set by {by} at {_clean(p.get('updated_at', ''), 20)}: adopt or "
-                       "refine it (do not silently overwrite it).")
+                       "refine it (do not silently overwrite it); leaving it unchanged adopts it.")
         out.append("Update it when your enduring responsibility changes: " + DESCRIBE.format(me=me))
     elif not ask_role:
         out.append("Your role is not set. Once your task is clear, record what you own so other sessions can "
@@ -256,7 +307,8 @@ def render(tree: dict, me: str, solo: bool = False, h: str = "cc", tagged: list[
     has_kids = any(c in sess for c in m["children"])
     up = m.get("parent") in sess  # the root has nowhere to inquire: it tells the user
     down = TRIAGE_DOWN.format(tool=harness.TOOL[h], up="inquire upward" if up else "tell the user it has no owner here")
-    triage = " ".join([TRIAGE_DO, *([down] if has_kids else []), TRIAGE_UP if up else TRIAGE_ROOT, TRIAGE_END])
+    triage = " ".join([TRIAGE_DO, *([down] if has_kids else []), TRIAGE_UP if up else TRIAGE_ROOT,
+                       TRIAGE_END.format(tool=harness.TOOL[h])])
     return ("<pengupool>\n" + top + "\n".join(out) + "\nSession tree (managed by PenguPool, updated live when the user "
             "regroups sessions):\n" + "\n".join(draw_tree(sess, me)) + "\n"
             f"Your parent: {parent}.\nYour children: {kids}.\n{triage}\n{RULES.format(tool=harness.TOOL[h], me=me)}\n"
@@ -337,8 +389,11 @@ def main() -> None:
     route = route_match(tree, sid, prompt)
     ask, solo_ask = ask_role(tree, sid) if event == "UserPromptSubmit" else (False, False)
     text = render(tree, sid, solo=event == "SessionStart" or solo_ask, tagged=tagged, route=route, ask_role=ask)
-    if text and event == "SessionStart" and inp.get("source") == "compact" and "Session tree" in text:
-        text = text.replace("<pengupool>\n", "<pengupool>\n" + COMPACTED + "\n", 1)
+    if text and "Session tree" in text:
+        pre = [line for line in (org_change(tree, sid),
+                                 COMPACTED if event == "SessionStart" and inp.get("source") == "compact" else "") if line]
+        if pre:
+            text = text.replace("<pengupool>\n", "<pengupool>\n" + "\n".join(pre) + "\n", 1)
     if text:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}))
 

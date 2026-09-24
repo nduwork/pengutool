@@ -168,18 +168,22 @@ def authorize_send(sender: str, recipient: str, t: Tree | None = None) -> tuple[
         who = ", ".join(t.name[s] for s in ok)
         return False, f"PenguPool: name the session you are messaging (to=…); you may message: {who}."
     hits = resolve(t, sender, recipient)
-    if not hits and str(recipient).strip().startswith("uds:"):  # a session address we cannot map: refuse
+    sock = str(recipient).strip().startswith("uds:")
+    if not hits and sock:  # a session address we cannot map: refuse
         who = ", ".join(t.name[s] for s in ok)
         return False, f"PenguPool: {recipient} is not a session you may message; message by name: {who}."
     if not hits:
         return True, ""
-    if len(hits) == 1 and (next(iter(hits)) in ok or granted(sender, next(iter(hits)))):
+    target = next(iter(hits))
+    if len(hits) == 1 and (target in ok or granted(sender, target)):
+        if sock:  # sessions talk by name, so the transcript shows who each message went to
+            return False, (f"PenguPool: address sessions by name, not socket: send to=\"{t.name[target]}\" "
+                           "(the message's from-name).")
         return True, ""
     who = ", ".join(f"{'parent' if s == t.parent.get(sender) else 'child'} {t.name[s]}" for s in ok)
     if len(hits) > 1:
         return False, (f"PenguPool: \"{recipient}\" names {len(hits)} sessions; message by session id. "
                        f"You may message: {who}.")
-    target = next(iter(hits))
     try:
         via = f" Send it to {t.name[route(t, sender, target)]} and ask them to route it on."
     except LookupError:

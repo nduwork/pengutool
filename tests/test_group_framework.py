@@ -300,6 +300,9 @@ def test_socket_addresses_and_name_case_do_not_slip_past_the_guard():
     ok, why = routing.authorize_send(D, "uds:/tmp/cc-socks/other.sock", t)  # 'other' by socket, not adjacent
     assert not ok and "Send it to kid" in why
     assert routing.authorize_send(B, "uds:/tmp/cc-socks/unknown.sock", t)[0] is False
+    t.sock["uds:/tmp/cc-socks/lead.sock"] = A
+    ok, why = routing.authorize_send(B, "uds:/tmp/cc-socks/lead.sock", t)   # adjacent, but by socket
+    assert not ok and 'to="lead"' in why
     ok, why = routing.authorize_send(D, "Other", t)                          # case-folded name
     assert not ok and "Send it to kid" in why
     assert routing.authorize_send(B, "LEAD", t) == (True, "")
@@ -315,3 +318,20 @@ def test_a_prefix_the_parent_shares_with_its_child_is_not_a_match(home, monkeypa
     assert context.route_match(tree, A, "commit and push the shop portal fix") == []
     assert context.route_match(tree, A, "rebase acme-shop onto main") == []   # the base repo of my worktree
     assert context.route_match(tree, A, "rebuild the site") == [(B, "acme-shop-site", ["site"])]
+
+
+def test_a_regroup_is_announced_once_and_refreshes_the_cached_tree(home, monkeypatch):
+    monkeypatch.setattr(context, "SEEN", home / "seen")
+    assert context.org_change(_sess(), B) == context.org_change(_sess(), A) == ""  # first block: the baseline
+    assert context.org_change(_sess(), B) == ""                              # nothing moved
+    moved = _sess(**{B: {**_sess()["sessions"][B], "parent": None},
+                     A: {**_sess()["sessions"][A], "children": []}})
+    line = context.org_change(moved, B)
+    assert line.startswith("ORG CHANGED") and "parent: lead → none" in line and "memory" in line
+    assert context.org_change(moved, B) == ""                                # said once
+    assert "children removed: kid" in context.org_change(moved, A)
+    # a regroup after tree.json was written invalidates it at once, not FRESH_S later
+    monkeypatch.setattr(model, "GROUPS", home / "groups.json")
+    assert not context._changed_since(__import__("time").time() + 60)
+    model.save_groups({B: A})
+    assert context._changed_since(0)
