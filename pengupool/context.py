@@ -156,6 +156,15 @@ def _terms(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9][a-z0-9_.-]*[a-z0-9]", str(text).lower()) if len(w) >= 3}
 
 
+def _parts(name: str) -> set[str]:
+    """Terms of a session name or workspace: every run of its pieces between - _ ~ . as written
+    ("oh-tidepool-portal" gives oh-tidepool, tidepool-portal, tidepool, …). Both sides are split the same
+    way, so a repo prefix a parent shares with its child cancels out whatever its length."""
+    bits = re.split(r"([-_~.])", str(name).lower())   # pieces at even indexes, separators between
+    runs = {"".join(bits[i:j + 1]) for i in range(0, len(bits), 2) for j in range(i, len(bits), 2)}
+    return {t for r in runs for t in _terms(r)}
+
+
 def _said(term: str, prompt: str) -> bool:
     return re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", prompt) is not None
 
@@ -170,15 +179,15 @@ def route_match(tree: dict, me: str, prompt: str) -> list[tuple[str, str, list[s
         return []
     text = prompt.lower()
     mine_p = profiles.load(me)
-    mine = (_terms(sess[me]["name"].replace("~", " ")) | _terms(sess[me].get("workspace") or sess[me].get("repo", ""))
+    mine = (_parts(sess[me]["name"]) | _parts(sess[me].get("workspace") or sess[me].get("repo", ""))
             | set(mine_p.get("keywords") or []) | _terms(mine_p.get("summary", "")))
     out = []
     for c in sess[me].get("children") or []:
         if c not in sess:
             continue
         p = profiles.load(c)
-        strong = (set(p.get("keywords") or []) | _terms(re.sub(r"[-_~.]", " ", sess[c]["name"]))
-                  | _terms(sess[c].get("workspace") or "")) - mine - STOPWORDS
+        strong = (set(p.get("keywords") or []) | _parts(sess[c]["name"])
+                  | _parts(sess[c].get("workspace") or "")) - mine - STOPWORDS
         weak = {w for w in _terms(f"{p.get('summary', '')} {p.get('responsibility', '')}")
                 if len(w) >= 5} - mine - STOPWORDS - strong
         hits = sorted(t for t in strong if _said(t, text))
@@ -323,8 +332,10 @@ def audit(sid: str, again: bool) -> str:
         return ""
     why = []
     names = [n for n in (d.get("targets") or {}).values()]
+    said = d.get("why") or {}   # the words that matched, so a wrong match is plain to see
     if names:
-        why.append(f"routing skipped for {', '.join(names)}. This request matched that child, but it was never "
+        named = ", ".join(f"{n} (matched: {', '.join(said[n])})" if said.get(n) else n for n in names)
+        why.append(f"routing skipped for {named}. This request matched that child, but it was never "
                    f"messaged. Send it the part it owns now, or, if the user said to do it yourself or the match "
                    f"is wrong, say so in one line and stop.")
     if d.get("role") and not has_role(sid):
@@ -376,7 +387,8 @@ def main() -> None:
             p = _route_state(sid)
             need_role = ask and not solo_ask
             if p and (route or need_role):
-                model.write_json(p, {"targets": {c: n for c, n, _ in route}, "role": need_role, "ts": time.time()})
+                model.write_json(p, {"targets": {c: n for c, n, _ in route}, "why": {n: t for _, n, t in route},
+                                     "role": need_role, "ts": time.time()})
             elif p:
                 p.unlink(missing_ok=True)
         except OSError:
