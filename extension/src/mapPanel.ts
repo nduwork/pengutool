@@ -97,7 +97,9 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
   .xedge { stroke:#f0883e; stroke-opacity:.85; fill:none; stroke-width:1.5; stroke-dasharray:4,4; }
   .elabel { fill: var(--vscode-descriptionForeground); font-size:9px; }
   .emask { fill: var(--vscode-editor-background); }   /* keeps the line from bleeding through a label */
-  .node.lone .box { stroke-dasharray:4,4; }            /* ungrouped while others are grouped */
+  .node.lone .box { stroke-dasharray:4,4; }
+  .eyebrow { fill: var(--vscode-descriptionForeground); font-size:9px; letter-spacing:.14em; }
+  .hair { stroke: var(--vscode-panel-border); stroke-width:1; }            /* ungrouped while others are grouped */
   .box { stroke:var(--state-color, var(--vscode-panel-border)); stroke-width:1.5; rx:6;
          fill: var(--vscode-editorWidget-background); transition: stroke 200ms; }
   .selection { fill:none; stroke:transparent; stroke-width:2; rx:8; pointer-events:none; }
@@ -198,36 +200,50 @@ ${HARNESS_TABS_HTML}
   const LAYOUTS = { TB:'↓ Top-down', LR:'→ Left-right' }, SPACINGS = { compact:'Compact', roomy:'Roomy' };
   const opts = Object.assign({ dir:'TB', spacing:'compact', msgs:true }, vscode.getState?.()?.opts);
   function spacing(){ const roomy = opts.spacing==='roomy';
-    return opts.dir==='TB' ? { nodesep: roomy ? 40 : 24, ranksep: roomy ? 80 : 48 }
+    return opts.dir==='TB' ? { nodesep: roomy ? 40 : 24, ranksep: roomy ? 88 : 56 }
                            : { nodesep: roomy ? 28 : 16, ranksep: roomy ? 200 : 136 }; }  // LR: labels run along
   // Only the tree goes to dagre, so an @session line never bends the tree. Lines are routed on the laid-out
   // cards: a tree edge leaves the parent, turns on a bus 16px out (shared by the siblings) and runs into the
   // child. An @session line turns in the gaps between ranks and crosses ranks only in a lane no card
   // touches, attaching 16px off the cards' centre lines, on the side away from the labels and the tree's strokes.
-  function geometry(g){
-    const H = opts.dir==='TB';
-    const cards = g.nodes().map(id => { const n=g.node(id);
-      return { main:H?n.y:n.x, side:H?n.x:n.y, hm:(H?n.height:n.width)/2, hs:(H?n.width:n.height)/2 }; });
-    const ranks = {}; cards.forEach(c => { const k=Math.round(c.main); ranks[k]=Math.max(ranks[k]||0, c.hm); });
+  function geometry(boxes, lone, laneX){
+    const H = opts.dir==='TB', ids = Object.keys(boxes);
+    const cards = ids.map(id => { const n=boxes[id];
+      return { id, main:H?n.y:n.x, side:H?n.x:n.y, hm:(H?n.height:n.width)/2, hs:(H?n.width:n.height)/2 }; });
+    const ranks = {}; cards.filter(c => !lone.has(c.id)).forEach(c => { const k=Math.round(c.main); ranks[k]=Math.max(ranks[k]||0, c.hm); });
     const centres = Object.keys(ranks).map(Number).sort((a,b)=>a-b);
     const pt = (m, s) => H ? [s, m] : [m, s];
-    const at = id => cards[g.nodes().indexOf(id)];
+    const at = id => cards[ids.indexOf(id)];
     // the gap on the sgn side of the rank at centre c (past the last rank: 12px beyond it)
     const gap = (c, sgn) => { const k=Math.round(c), next=centres[centres.indexOf(k)+sgn];
       return next===undefined ? k+sgn*(ranks[k]+12) : (k+sgn*ranks[k] + next-sgn*ranks[next])/2; };
     const clear = (s, m1, m2) => cards.every(c => Math.abs(c.side-s) > c.hs+4 || Math.max(m1,m2) < c.main-c.hm || Math.min(m1,m2) > c.main+c.hm);
-    return { pt, at, gap, clear, cards };
+    return { pt, at, gap, clear, cards, H, box: id => boxes[id], lone, laneX };
   }
   function treeRoute(G, a, b){
     const A=G.at(a), B=G.at(b), bus=A.main+A.hm+16;
     return [G.pt(A.main+A.hm, A.side), G.pt(bus, A.side), G.pt(bus, B.side), G.pt(B.main-B.hm, B.side)];
   }
-  function crossRoute(G, a, b){
+  // To or from the ungrouped column: leave the tree card into the gap past its rank, run along the gap
+  // (LR: then the top margin) to the lane left of the column, and into the ungrouped card's left edge.
+  // k spreads several such lines apart so none shares a stroke.
+  const lanes6 = k => (k%3 - 1)*6;   // ponytail: 3 offsets; a 4th line in one gap may share a stroke
+  function loneRoute(G, a, b, k){
+    if(G.lone.has(a) && !G.lone.has(b)) return loneRoute(G, b, a, k).reverse();
+    const L = G.box(b), lane = G.laneX - 5*(k%3), ly = L.y + Math.min(5*(k%3), L.height/2-6), end = [L.x-L.width/2, ly];
+    if(G.lone.has(a)){ const A=G.box(a); return [[A.x-A.width/2, A.y], [lane, A.y], [lane, ly], end]; }
+    const A = G.at(a), sa = A.side + (G.H ? -1 : 1)*Math.min(16, A.hs-8), gp = G.gap(A.main, 1) + lanes6(k);
+    const start = G.pt(A.main+A.hm, sa);
+    return G.H ? [start, G.pt(gp, sa), [lane, gp], [lane, ly], end]
+               : [start, G.pt(gp, sa), [gp, 8+5*(k%3)], [lane, 8+5*(k%3)], [lane, ly], end];
+  }
+  function crossRoute(G, a, b, k){
+    if(G.lone.has(a) || G.lone.has(b)) return loneRoute(G, a, b, k);
     const A=G.at(a), B=G.at(b);
     const off = (opts.dir==='TB' ? -1 : 1) * 16;   // the side away from the labels: right of a TB drop, above an LR line
     const sa = A.side + Math.sign(off)*Math.min(16, A.hs-8), sb = B.side + Math.sign(off)*Math.min(16, B.hs-8);
     const sgn = B.main > A.main+1 ? 1 : B.main < A.main-1 ? -1 : 1;           // same rank: go round below
-    const ya = G.gap(A.main, sgn), yb = Math.abs(B.main-A.main) <= 1 ? ya : G.gap(B.main, -sgn);
+    const ya = G.gap(A.main, sgn) + lanes6(k), yb = Math.abs(B.main-A.main) <= 1 ? ya : G.gap(B.main, -sgn) + lanes6(k);
     const start = G.pt(A.main+sgn*A.hm, sa), end = G.pt(Math.abs(B.main-A.main) <= 1 ? B.main+sgn*B.hm : B.main-sgn*B.hm, sb);
     if(Math.abs(ya-yb) < 1) return [start, G.pt(ya, sa), G.pt(ya, sb), end];
     // a lane from ya to yb that no card touches: prefer one near the two ends; a lane beside any card works
@@ -261,19 +277,33 @@ ${HARNESS_TABS_HTML}
     empty.style.display = nodes.length ? 'none' : 'flex';
     legend.style.display = nodes.length ? 'flex' : 'none';
     if(!nodes.length) return;
+    // Sessions outside every tree (while some tree exists) skip dagre: they stack in their own column to
+    // the right, left edges aligned, 16px apart whatever their heights, under an UNGROUPED heading and a hairline.
+    const lead = new Set(snap.roots.filter(r => r.children.length).map(r => r.id));
+    const lone = new Set(lead.size ? snap.roots.filter(r => !r.children.length).map(r => r.id) : []);
     const g = new dagre.graphlib.Graph(); g.setGraph({rankdir:opts.dir, ...spacing(), marginx:24, marginy:24});
     g.setDefaultEdgeLabel(()=>({}));
-    nodes.forEach(n => {
-      g.setNode(n.id, cardSize(n));
-    });
+    nodes.forEach(n => { if(!lone.has(n.id)) g.setNode(n.id, cardSize(n)); });
     const es = edges(snap.roots, opts.msgs ? snap.cross : []);
     es.tree.forEach(([a,b]) => g.setEdge(a,b));
     dagre.layout(g);
-    const G = geometry(g);
+    const gr = g.graph(), boxes = {};
+    g.nodes().forEach(id => { boxes[id] = g.node(id); });
+    const loners = nodes.filter(n => lone.has(n.id)), colX = (gr.width||0) + 16;
+    const colW = Math.max(0, ...loners.map(n => cardSize(n).width));
+    let cy = 24 + 20, width = gr.width||100, height = gr.height||100;
+    if(loners.length){
+      scene.appendChild(el('line', {class:'hair', x1:colX-24, y1:12, x2:colX-24, y2:Math.max(height, 44 + loners.reduce((h,n) => h+cardSize(n).height+16, 0)) - 12}));
+      const head = el('text', {class:'eyebrow', x:colX, y:24+8}); head.textContent = 'UNGROUPED'; scene.appendChild(head);
+      loners.forEach(n => { const c = cardSize(n);
+        boxes[n.id] = { width: c.width, height: c.height, x: colX + c.width/2, y: cy + c.height/2 }; cy += c.height + 16; });  // left-aligned: a card grows to the right; the gap stays 16px
+      width = colX + colW + 24; height = Math.max(height, cy + 8);
+    }
+    const G = geometry(boxes, lone, colX - 8);
     // edges first (under nodes)
-    es.cross.forEach(([a,b]) => scene.appendChild(el('path', {class:'xedge', d:rounded(crossRoute(G, a, b)), 'marker-end':'url(#xarrow)'})));
+    es.cross.forEach(([a,b], k) => scene.appendChild(el('path', {class:'xedge', d:rounded(crossRoute(G, a, b, k)), 'marker-end':'url(#xarrow)'})));
     const routes = es.tree.map(([a,b,l]) => { const pts=treeRoute(G, a, b);
-      scene.appendChild(el('path', {class:'edge', d:rounded(pts)})); return [pts, l, g.node(b)]; });
+      scene.appendChild(el('path', {class:'edge', d:rounded(pts)})); return [pts, l, boxes[b]]; });
     // labels over the edges, each on a mask 6px off the last segment into the child, cut to the room there
     routes.forEach(([pts, l, c]) => { if(!pts || !l) return;
       const [j, end] = pts.slice(-2), H = opts.dir==='TB';
@@ -285,10 +315,8 @@ ${HARNESS_TABS_HTML}
       scene.appendChild(el('rect', {class:'emask', x, y, width:w+4, height:12, rx:2}));
       const t=el('text',{class:'elabel', x:x+2, y:y+9}); t.textContent=text; scene.appendChild(t);
       const tip=el('title',{}); tip.textContent=l; t.appendChild(tip); });
-    const lead = new Set(snap.roots.filter(r => r.children.length).map(r => r.id));
-    const lone = new Set(lead.size ? snap.roots.filter(r => !r.children.length).map(r => r.id) : []);
     nodes.forEach(n => {
-      const nd=g.node(n.id); const gx=nd.x-nd.width/2, gy=nd.y-nd.height/2;
+      const nd=boxes[n.id]; const gx=nd.x-nd.width/2, gy=nd.y-nd.height/2;
       const grp=el('g',{class:'node state-'+n.state+(lone.has(n.id)?' lone':''), transform:'translate('+gx+','+gy+')', tabindex:'0', role:'button', 'aria-label':'Open '+n.name});
       const ring=el('rect',{class:'selection', x:-3, y:-3, width:nd.width+6, height:nd.height+6, rx:8});
       const rect=el('rect',{class:'box', width:nd.width, height:nd.height, rx:6});
@@ -307,8 +335,8 @@ ${HARNESS_TABS_HTML}
       grp.appendChild(ring); grp.appendChild(rect); grp.appendChild(title); grp.appendChild(body); scene.appendChild(grp);
       nodeEls.set(n.id, {grp, title, state, nm, meta, harness, ctx, repo, chain, lone: lone.has(n.id)});
     });
-    const gr=g.graph(); document.getElementById('svg').setAttribute('viewBox', '0 0 '+(gr.width||100)+' '+(gr.height||100));
-    document.getElementById('svg').setAttribute('width', (gr.width||100)); document.getElementById('svg').setAttribute('height', (gr.height||100));
+    document.getElementById('svg').setAttribute('viewBox', '0 0 '+width+' '+height);
+    document.getElementById('svg').setAttribute('width', width); document.getElementById('svg').setAttribute('height', height);
   }
 
   function restyle(snap){

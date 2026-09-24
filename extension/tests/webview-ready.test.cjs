@@ -363,3 +363,16 @@ test('map options switch direction and hide @session lines, and stay across redr
   assert.equal(state.opts.msgs, true, 'saved in the webview state');
   assert.equal(state.opts.dir, 'LR');
 });
+
+test('map stacks ungrouped sessions in one aligned column right of the trees', () => {
+  const out = drawMap({ roots: [lead, cc('p', 'payments'), cc('q', 'billing')], cross: [['web', 'payments', 'logout?']] }, at);
+  const card = (n) => out.find((c) => c.attrs['aria-label'] === 'Open ' + n);
+  const pos = (n) => card(n).attrs.transform.match(/translate\(([-\d.]+),([-\d.]+)\)/).slice(1).map(Number);
+  const [px, py] = pos('payments'), [qx, qy] = pos('billing');
+  assert.equal(px, qx, 'one column');
+  assert.ok(px > 300, 'right of the tree');
+  assert.ok(qy - py >= 16, 'stacked with gaps');
+  assert.ok(out.some((e) => e.className === 'eyebrow' && e.textContent === 'UNGROUPED'));
+  const x = out.find((e) => e.className === 'xedge');
+  assert.ok(rightAngled(x.attrs.d), x.attrs.d);
+});

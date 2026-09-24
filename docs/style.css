@@ -48,6 +48,9 @@ kbd{border:1px solid #ffffff2a}
 .card{position:absolute;box-sizing:border-box;background:#17222d;border:1.5px solid var(--st);border-radius:6px;padding:6px 9px;line-height:14px;overflow:hidden}
 .edges path.x{stroke:#f0883e;stroke-width:1.5;stroke-dasharray:4 4}
 .card.lone{border-style:dashed}
+.cards .card.col{transform:none;width:auto!important;min-width:18%;max-width:21%}
+.ucol{position:absolute;left:75.5%;top:34px;bottom:10px;padding-left:1.5%;border-left:1px solid #2e3f4c;font-size:8.5px;letter-spacing:.14em;color:#6f8591}
+.ucol[hidden]{display:none}
 .card .chip{float:right;font-size:8px;line-height:11px;letter-spacing:.08em;padding:0 3px;border:1px solid currentColor;border-radius:2px;color:#8497a2}
 .card.sel{box-shadow:0 0 0 3px #0d1620,0 0 0 5px #007fd4}
 .card .st{color:var(--st);font-size:10px;font-weight:600}

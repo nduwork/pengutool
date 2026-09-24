@@ -47,7 +47,8 @@ Right-click a session row for its actions. Right-click empty space in Sessions t
 session or add a previous one.
 The list and map share state cues: `● Active`, `◷ Waiting`, `○ Stale`, and `? Approval`.
 The map marks the selected session with a separate focus outline. The top of each tree carries a `LEAD`
-tag, and a session outside every tree has a dashed border. Lines meet at right angles and never pass
+tag. Sessions outside every tree have a dashed border and stack in an **Ungrouped** column on the right,
+left-aligned with an even gap between them, so they never mix into a tree. Lines meet at right angles and never pass
 behind a card: tree lines are solid, and `@session` messages between branches are dashed orange. The map
 toolbar switches between **Top-down** and **Left-right**, between **Compact** and **Roomy** spacing, and turns
 `@session` lines on or off. The map remembers these choices.

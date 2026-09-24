@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
-- Map: lines meet at right angles and never pass behind a card, and edge labels sit on a background beside their line. A child's reply to its parent is no longer drawn over the line between them. `@session` messages across the tree are dashed orange arrows. The top session of each tree is tagged `LEAD`, and a session outside every tree has a dashed border. A legend runs along the bottom.
+- Map: lines meet at right angles and never pass behind a card, and edge labels sit on a background beside their line. A child's reply to its parent is no longer drawn over the line between them. `@session` messages across the tree are dashed orange arrows. The top session of each tree is tagged `LEAD`, and sessions outside every tree have a dashed border and stack in an **Ungrouped** column on the right, left-aligned with an even gap between them. A legend runs along the bottom.
 - Map toolbar: **Top-down** or **Left-right** layout, **Compact** or **Roomy** spacing, and `@session` lines on or off. The map remembers these choices.
 
 ## [0.2.0] - 2026-09-23

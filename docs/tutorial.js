@@ -37,13 +37,17 @@
     $('.ide-side').innerHTML = h;
   }
   function layout() {
-    const roots = S.sessions.filter((s) => s.h === 'cc' && !s.parent);
+    // as the real map: once a tree exists, sessions outside every tree stack in a column on the right
+    const all = S.sessions.filter((s) => s.h === 'cc' && !s.parent), grouped = all.some((r) => kids(r.id).length);
+    const loners = grouped ? all.filter((r) => !kids(r.id).length) : [], roots = all.filter((r) => !loners.includes(r));
+    const area = loners.length ? 70 : 92;
     const units = roots.map((r) => Math.max(1, kids(r.id).length));
     const total = units.reduce((a, b) => a + b, 0) || 1;
-    const w = Math.min(29, 92 / total);
+    const w = Math.min(29, area / total);
     const pos = {}; let start = 0;
+    loners.forEach((r) => { pos[r.id] = { x: 79, y: 0, w: 20, col: true }; });  // left edge; stacked in renderMap
     roots.forEach((r, i) => {
-      const x0 = 4 + (start / total) * 92, span = (units[i] / total) * 92, ks = kids(r.id);
+      const x0 = 4 + (start / total) * area, span = (units[i] / total) * area, ks = kids(r.id);
       pos[r.id] = { x: x0 + span / 2, y: ks.length ? 10 : 36, w: ks.length ? Math.min(60, w * 2.5) : w };  // room for the chain
       ks.forEach((k, j) => { pos[k.id] = { x: x0 + span * (j + 0.5) / ks.length, y: 62, w }; });
       start += units[i];
@@ -60,6 +64,7 @@
       const lead = !s.parent && kids(s.id).length, lone = grouped && !s.parent && !lead;  // as the real map marks them
       el.className = el.className.replace(/\bst-\w+|\bsel\b|\bblink\b|\blone\b/g, '').trim() + ` st-${s.state}` + (S.sel === s.id ? ' sel' : '') + (s.blink ? ' blink' : '') + (lone ? ' lone' : '');
       Object.assign(el.style, { left: p.x + '%', top: p.y + '%', width: p.w + '%' });
+      el.classList.toggle('col', !!p.col);
       const chain = !s.parent && kids(s.id).length && S.chain ? `<div class="ch">${esc(S.chain)}</div>` : '';
       el.innerHTML = `<div class="st">${lead ? '<span class="chip">LEAD</span>' : ''}${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
         + `<div class="meta">${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}%</span></div>${chain}`;
@@ -70,10 +75,17 @@
       d += `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `;
     }
     $('.edges path').setAttribute('d', d);
+    // the ungrouped column: left-aligned, the same 12px gap between cards whatever their heights
+    let top = 50;
+    pane.querySelectorAll('.card.col').forEach((c) => { c.style.top = top + 'px'; top += c.offsetHeight + 12; });
+    $('.ucol').hidden = !pane.querySelector('.card.col');
     // the latest message, when it is an @session line across the tree: dashed orange, run under the row of
     // cards (never behind one) and up into the other card; the path starts and ends under the cards
     const x = S.logs[S.logs.length - 1], xa = x && x.c === 'lo' && pos[x.src], xb = x && x.c === 'lo' && pos[x.dst];
-    $('.edges path.x').setAttribute('d', xa && xb ? `M${xa.x} ${xa.y + 10} V92 H${xb.x} V${xb.y + 10}` : '');
+    const into = (id, b) => { const c = pane.querySelector(`[data-id="${id}"]`);   // an ungrouped card: into its left edge
+      if (!b.col || !c) return `H${b.x} V${b.y + 10}`;
+      const m = (c.offsetTop + c.offsetHeight / 2) / pane.offsetHeight * 100; return `H77.5 V${m} H${b.x}`; };
+    $('.edges path.x').setAttribute('d', xa && xb ? `M${xa.x} ${xa.y + 10} V92 ${into(x.dst, xb)}` : '');
     const empty = !S.sessions.some((x) => x.h === 'cc');
     $('.map-empty').hidden = !empty;
   }
