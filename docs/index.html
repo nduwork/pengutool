@@ -26,27 +26,16 @@
   <main id="top">
     <section class="hero wrap">
       <div class="hero-copy">
-        <span class="eyebrow"><span class="pulse"></span> VS CODE · CURSOR · CLAUDE CODE · PI</span>
-        <h1>Build an agent team.<br><em>Actually manage it.</em></h1>
-        <p>PenguPool puts Claude Code and pi agents into a team you run from VS Code or Cursor. Put a lead over the agents that own each repo, and talk to the lead: it routes each part to the agent that owns it. The map shows who is messaging whom and what each agent is doing, so you can always see what the team is up to.</p>
+        <h1>Build an agent team. <em>Actually manage it.</em></h1>
+        <p>Claude Code and pi agents as a team you run from VS Code or Cursor. Talk to the lead: it routes each part to the agent that owns it, and the map shows who is messaging whom.</p>
         <div class="install-box" id="install">
           <div class="cmd"><span class="pmt" aria-hidden="true">$</span><code id="cmd">curl -fsSL https://pengupool.nduwork.com/install.sh | bash</code></div>
           <button type="button" id="copy" aria-label="Copy install command">Copy</button>
         </div>
-        <p class="install-note">Installs the CLI, the wiring for each installed harness, and the extension in every VS Code and Cursor it finds. Needs Python 3.11+, Make, tmux 3.2+, and Claude Code and/or pi. <a href="https://github.com/nduwork/pengutool#install">Other install options →</a></p>
-        <p class="hero-note">Open source · MIT · macOS &amp; Linux · <a class="ver" href="https://github.com/nduwork/pengutool/releases/latest">latest release</a> · local only, no hosted account</p>
       </div>
     </section>
 
     <section class="tutorial wrap" id="tutorial" aria-labelledby="tut-h">
-      <div class="team-intro">
-        <h2 id="tut-h">Your first team in three steps</h2>
-        <ol class="team-steps">
-          <li><b>Add the agents.</b> Press <kbd>n</kbd> for each one and pick its repo: the folder itself, or a new worktree.</li>
-          <li><b>Put a lead over them.</b> Drag each agent onto the lead, then tell the lead what each one owns.</li>
-          <li><b>Talk to the lead.</b> It routes each part to the agent that owns it. Watch it happen on the map and in the Log.</li>
-        </ol>
-      </div>
       <div class="tut" id="tut">
         <div class="ide" id="stage" role="img" aria-label="Animated walkthrough of the PenguPool extension in Cursor: an agent team with a lead in the monorepo and backend, frontend and deployment agents under it; the caption below describes each scene">
           <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop — Cursor</span><span></span></div>
@@ -85,8 +74,15 @@
         <div class="cap" aria-live="polite"><span class="cap-n">1</span><div><b class="cap-t"></b><p class="cap-p"></p></div></div>
       </div>
       <div class="tut-ctl"><button type="button" class="button secondary" id="tplay">❚❚ Pause</button><ol id="chapters" class="chapters" aria-label="Scenes"></ol></div>
+      <div class="team-intro">
+        <h2 id="tut-h">Your first team:</h2>
+        <ol class="team-steps">
+          <li><b>Add the agents.</b> Press <kbd>n</kbd> for each one and pick its repo: the folder itself, or a new worktree.</li>
+          <li><b>Put a lead over them.</b> Drag each agent onto the lead, then tell the lead what each one owns.</li>
+          <li><b>Talk to the lead.</b> It routes each part to the agent that owns it. Watch it happen on the map and in the Log.</li>
+        </ol>
+      </div>
       <noscript><style>#tut,.tut-ctl{display:none}</style><img class="tut-gif" src="assets/tutorial/5-ask-the-top.gif" alt="PenguPool routing a request from the lead session to its children"></noscript>
-      <a class="more" href="https://github.com/nduwork/pengutool/blob/main/docs/tutorial-script.md">Read the demo script →</a>
     </section>
 
     <section class="features wrap" id="plugins">
@@ -133,10 +129,5 @@
     });
   </script>
   <script src="tutorial.js" defer></script>
-<script>
-  // the hero shows the live latest release, so the page never goes stale between releases
-  fetch('https://api.github.com/repos/nduwork/pengutool/releases/latest').then((r) => r.ok ? r.json() : null)
-    .then((j) => { const a = document.querySelector('.hero-note .ver'); if (j && j.tag_name && a) a.textContent = j.tag_name; }).catch(() => {});
-</script>
 </body>
 </html>
