@@ -210,7 +210,7 @@ export function sessionsHtml(): string {
     const name=document.createElement('span'); name.className='name'; name.textContent=node.name;
     const desc=document.createElement('span'); desc.className='desc';
     desc.textContent=(node.harness==='pi'?'pi · ':'')+(node.repo||'');
-    if(node.ctx_pct!=null){  // context use, colored by level
+    if(node.ctx_pct!=null){
       const ctx=document.createElement('span'); ctx.className=ctxLevel(node.ctx_pct); ctx.textContent=node.ctx_pct+'% ctx';
       desc.append(' · ',ctx);
     }

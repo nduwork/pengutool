@@ -9,15 +9,11 @@ import time
 
 from . import harness, model
 
-SESSION = "pengupool"  # tmux session that holds every Claude window
+SESSION = "pengupool"  # tmux session that holds every agent window, on each harness's server
 SESS = harness.SOCK["cc"]  # Claude's sessions server (-L): shared by every VS Code/Cursor window,
 #                            so a session started in one is attachable in another (no restart).
 #                            pi sessions live on their own server, harness.SOCK["pi"]: every helper below
 #                            takes `h` ("cc" | "pi") and talks only to that harness's server.
-# Legacy: the launcher used to pass the user's ambient socket; sessions now always live on `-L SESS`
-# so both front-ends agree. Kept as no-op env reads for backwards compat with any old launcher.
-USER_SOCK = os.environ.get("PENGUPOOL_USER_SOCK", "")
-USER_SESSION = os.environ.get("PENGUPOOL_USER_SESSION", "")
 SHELLS = {"sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "login", ""}
 _CACHE: dict[str, tuple[float, str]] = {}
 

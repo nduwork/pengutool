@@ -13,10 +13,10 @@ export const SESSION_STATE_CSS = `
   .state-blocked { --state-color: var(--vscode-errorForeground, #c42b1c); }
 `;
 
-/** Context-window use by level: green below 30%, orange below 60%, red from 60% up. */
+/** Context-window use by level: green below 30%, yellow below 60%, red from 60% up. */
 export const CTX_LEVEL_JS = `function ctxLevel(p){ return p < 30 ? 'ctx-low' : p < 60 ? 'ctx-mid' : 'ctx-high'; }`;
 export const CTX_LEVEL_CSS = `
   .ctx-low { color: var(--vscode-charts-green, #388a34); }
-  .ctx-mid { color: var(--vscode-charts-yellow, #cca700); }   /* traffic light: between the green and the red */
+  .ctx-mid { color: var(--vscode-charts-yellow, #cca700); }
   .ctx-high { color: var(--vscode-charts-red, #e51400); }
 `;

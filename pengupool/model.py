@@ -252,7 +252,6 @@ def load_agent_state(sid: str) -> dict:
 
 
 _CHAIN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
-# `steps.sh set --name X …` / `steps.sh use X` / bare `steps.sh set …` (chain "default") in a Bash tool call
 # A real steps.sh mutation echoes its chain as the tool result: `[name] step ● → next ○`. That echo is
 # the only trustworthy attribution signal — command text can contain the words inside heredocs or
 # strings, and the tracker's hook injects the *directory's* chain into prompts (exactly the confusion
@@ -412,7 +411,7 @@ def team_edges(sessions: list[dict]) -> list[Edge]:
 
 
 def load_registry() -> dict[str, str]:
-    """sessionId -> tmux pane, written by session_start.sh (last write wins)."""
+    """sessionId -> tmux pane, appended by pengupool.context and the pi extension (last write wins)."""
     # ponytail: append-only file re-read every tick; prune dead ids if it ever grows past a few MB.
     reg: dict[str, str] = {}
     p = PENGU / "registry.jsonl"

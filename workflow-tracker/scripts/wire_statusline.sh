@@ -40,7 +40,7 @@ selfcheck() {
   python3 -c "import json;d=json.load(open('$d/s.json'));assert d['statusLine']['command'].endswith(\"-- 'echo X'\");assert d['permissions']=={'allow':['Bash']};assert len(d['hooks']['SessionStart'])==1;ups=d['hooks']['UserPromptSubmit'];assert len(ups)==1 and ups[0]['hooks'][0]['command'].endswith('hook_prompt.sh\"') and 'matcher' not in ups[0]" || fail wrapped-shape
   bash "$s" --unwire | grep -q restored || fail unwire
   python3 -c "import json,sys;a=json.load(open('$d/s.json'));b=json.load(open('$d/s.before'));sys.exit(a!=b)" || fail round-trip
-  # 2b. a non-object entry in a hook-event list must not crash --unwire (greptile #5)
+  # 2b. a non-object entry in a hook-event list must not crash --unwire
   HERE="$HERE" python3 -c "import json,os;json.dump({'statusLine':{'type':'command','command':'bash \"'+os.environ['HERE']+'/statusline.sh\"'},'hooks':{'SessionStart':['junk',{'hooks':[]}]}},open('$d/n.json','w'))"
   export CLAUDE_SETTINGS="$d/n.json"
   bash "$s" --unwire >/dev/null 2>&1 || fail unwire-nonobject-crash
@@ -79,8 +79,8 @@ selfcheck() {
 [[ "$MODE" == selfcheck ]] && { selfcheck; exit 0; }
 
 # Plugin cache dirs are versioned; copy scripts somewhere stable and wire that.
-# A plugin install already ships the SessionStart hook via hooks/hooks.json, so never
-# also add it to settings.json here (would duplicate) — force NO_HOOK in this branch.
+# A plugin install already ships the SessionStart and UserPromptSubmit hooks via hooks/hooks.json,
+# so never also add them to settings.json here (would duplicate) — force NO_HOOK in this branch.
 if [[ "$HERE" == */plugins/cache/* ]]; then
   mkdir -p "$HOME_DIR/bin" && cp "$HERE"/steps.sh "$HERE"/statusline.sh "$HERE"/capture_context.py "$HERE"/hook_session_start.sh "$HERE"/hook_prompt.sh "$HOME_DIR/bin/"
   HERE="$HOME_DIR/bin"
