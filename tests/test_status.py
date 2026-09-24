@@ -109,3 +109,49 @@ def test_a_finished_chain_expires_a_minute_after_its_last_update(tmp_path):
     state.write_text("done\tbuild\t\nactive\tdeploy\t\n")        # still running: never expires
     os.utime(state, (old, old))
     assert model.read_status(str(repo)) == "[ship] build ✓ → deploy ●"
+
+    state.write_text("done\tbuild\t\nfailed\ttest\t\nplanned\tdeploy\t\n")   # stopped at a ✗
+    os.utime(state, (old, old))
+    assert model.read_status(str(repo)) == ""
+
+    state.write_text("done\tinit\t\ndone\tpoll\t\n")               # a loop between passes
+    (ss / "ship.cycle").write_text("2\npoll\n")
+    os.utime(state, (old, old))
+    assert model.read_status(str(repo)) == "[ship] init ✓ → poll ✓"
+
+
+def test_a_subfolder_shares_its_repos_tracker(tmp_path):
+    """steps.sh resolves the repo root through git; the map must find the same .step-status."""
+    model._STATUS_DIR_CACHE.clear()
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    sub = repo / "app" / "src"
+    sub.mkdir(parents=True)
+    assert model.status_dir(str(sub)) == repo / ".step-status"
+    alone = tmp_path / "loose"
+    alone.mkdir()
+    assert model.status_dir(str(alone)) == alone / ".step-status"   # outside a repo: the cwd itself
+
+
+def test_the_map_and_steps_sh_render_the_same_chain(tmp_path):
+    """Parity: the status line (steps.sh render) and the map (read_status) must agree, from a
+    subfolder of a real git repo, before and after the chain finishes and expires."""
+    import os, pathlib, subprocess, time
+    steps = pathlib.Path(__file__).resolve().parents[1] / "workflow-tracker/scripts/steps.sh"
+    repo = tmp_path / "repo"
+    sub = repo / "app"
+    sub.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    env = {k: v for k, v in os.environ.items() if k not in ("STEP_STATUS_DIR", "STEP_STATUS_DONE_TTL")}
+    sh = lambda *a: subprocess.run(["bash", str(steps), *a], cwd=sub, env=env, capture_output=True,
+                                    text=True).stdout.strip()
+    model._STATUS_DIR_CACHE.clear()
+    same = lambda: (sh("render"), model.read_status(str(sub)))
+
+    sh("set", "--name", "ship", "build", "deploy")
+    assert same() == ("[ship] build ● → deploy ○",) * 2
+    sh("done", "build"); sh("fail", "deploy")
+    assert same() == ("[ship] build ✓ → deploy ✗",) * 2
+    old = time.time() - 120
+    os.utime(repo / ".step-status" / "ship.state", (old, old))
+    assert same() == ("", "")

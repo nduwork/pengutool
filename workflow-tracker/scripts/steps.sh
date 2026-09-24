@@ -18,9 +18,12 @@
 #   steps.sh note [text]              set (or print) a one-line context note for the current chain
 #   steps.sh --selfcheck              run the built-in check
 #
-# A finished chain (every step ✓ or ✗) expires DONE_TTL seconds after its last update
-# ($STEP_STATUS_DONE_TTL, default 60): render prints nothing, so the next workflow starts a fresh
-# chain instead of inheriting a stale one. Its files stay; `list` still shows it.
+# A finished chain — no step active (all ✓, or stopped at a ✗, or the last step done past a
+# skipped ○) and not a loop — expires DONE_TTL seconds after its last update ($STEP_STATUS_DONE_TTL,
+# default 60). render prints nothing, start/done/fail/msg refuse it, and a bare `set` starts a new
+# `default` chain rather than overwriting it, so the next workflow always gets its own chain. Its
+# files stay; `list` still shows it. A looping chain (one that has been `cycle`d) never expires:
+# it ends only with `set` or `clear`.
 #
 # State: $STEP_STATUS_DIR (default ./.step-status). `current` names the active chain (default:
 # "default"); <chain>.state holds one step per line, <chain>.note an optional context line:
@@ -50,16 +53,18 @@ CHAIN="${CHAIN:-default}"
 STATE="$DIR/$CHAIN.state"
 NOTE="$DIR/$CHAIN.note"
 
-DONE_TTL="${STEP_STATUS_DONE_TTL:-60}"; DONE_TTL="${DONE_TTL//[^0-9]/}"; DONE_TTL="${DONE_TTL:-60}"
+DONE_TTL="${STEP_STATUS_DONE_TTL:-60}"; DONE_TTL="${DONE_TTL//[^0-9]/}"; DONE_TTL="${DONE_TTL:0:9}"
+DONE_TTL=$((10#${DONE_TTL:-60}))   # 10#: "08" is eight seconds, not an octal error
 
-# expired <state-file> — true when every step is done/failed and the file is older than DONE_TTL.
-# mtime is the last update, i.e. when the chain finished. GNU stat first; BSD/macOS stat second.
+# expired <state-file> — true when no step is active, the chain isn't a loop, and the file is older
+# than DONE_TTL. mtime is the last update, i.e. when the chain finished (no-op updates don't write).
+# GNU stat first; BSD/macOS stat second.
 expired() {
   local f="$1" st name detail
   [[ -f "$f" ]] || return 1
-  while IFS=$'\t' read -r st name detail; do
-    [[ -z "$name" ]] && continue
-    [[ "$st" == done || "$st" == failed ]] || return 1
+  [[ -e "${f%.state}.cycle" ]] && return 1   # a loop waits between passes; it ends with set or clear
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do
+    [[ "$st" == active ]] && return 1
   done < "$f"
   local m; m="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)" || return 1
   [[ "$m" =~ ^[0-9]+$ ]] || return 1
@@ -84,6 +89,10 @@ valid_chain() {
 # bash 3.2-safe membership test (macOS ships bash 3.2 — no namerefs/assoc arrays).
 in_list() { local n="$1"; shift; local x; for x in "$@"; do [[ "$x" == "$n" ]] && return 0; done; return 1; }
 
+# Every row loop reads `… || [[ -n "${name-}" ]]` so a last row without a trailing newline (a
+# hand-edited file) is still read: dropping it could hide an active step, or make a running chain
+# look finished and expire it.
+#
 # render_file <state-file> [body-first] [body-last] [count] — one line, or nothing if empty.
 # When a loop body is given, the contiguous run from body-first to body-last is wrapped
 # `[ … ↻count]` so a loop segment reads apart from one-shot steps around it.
@@ -91,7 +100,7 @@ render_file() {
   local file="$1" bfirst="${2-}" blast="${3-}" cnt="${4-}"
   [[ -f "$file" && ! -L "$file" ]] || return 0
   local out="" st name detail seg
-  while IFS=$'\t' read -r st name detail; do
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do
     [[ -z "$name" ]] && continue
     [[ -n "$out" ]] && out+=" → "
     [[ -n "$bfirst" && "$name" == "$bfirst" ]] && out+="["
@@ -114,14 +123,14 @@ render() {
 # read_cycle — for a looping chain, echo "<body-first>\t<body-last>\t<count>" (first/last body
 # step in chain order); nothing if the chain isn't looping. The ↻ segment lives inside the chain.
 read_cycle() {                       # read_cycle [chain] — defaults to the current chain
-  local c="${1:-$CHAIN}" cf="$DIR/${1:-$CHAIN}.cycle" sf="$DIR/${1:-$CHAIN}.state" cnt body
+  local cf="$DIR/${1:-$CHAIN}.cycle" sf="$DIR/${1:-$CHAIN}.state" cnt body
   [[ -f "$sf" && -f "$cf" && ! -L "$cf" ]] || return 0
   { IFS= read -r cnt; IFS= read -r body; } < "$cf"
   cnt="${cnt//[^0-9]/}"; cnt="${cnt:0:6}"; [[ -n "$cnt" ]] || return 0   # repo-controlled: strip + cap so junk can't overflow
   local -a bodyarr=(); IFS=$'\t' read -r -a bodyarr <<<"$body"
   [[ ${#bodyarr[@]} -ge 1 ]] || return 0
   local st name detail bf="" bl=""
-  while IFS=$'\t' read -r st name detail; do
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do
     [[ -z "$name" ]] && continue
     in_list "$name" "${bodyarr[@]}" && { [[ -z "$bf" ]] && bf="$name"; bl="$name"; }
   done < "$sf"
@@ -138,7 +147,10 @@ switch_chain() {
 
 use_chain() {
   switch_chain "$1" || return $?
-  [[ -f "$STATE" ]] && { render; return; }
+  if [[ -f "$STATE" ]]; then
+    expired "$STATE" && { printf '[%s] %s (finished)\n' "$CHAIN" "$(render_file "$STATE")"; return; }
+    render; return
+  fi
   printf '[%s] (empty — run 'set')\n' "$CHAIN"
 }
 
@@ -182,6 +194,14 @@ atomic_write() {
 }
 write_state() { atomic_write "$STATE"; }
 
+# A finished, expired chain is history: changing it would hand the old chain (name, ✓s) to the next
+# workflow. Say how to start the next one instead.
+finished_hint() {
+  expired "$STATE" || return 0
+  echo "steps.sh: chain '$CHAIN' finished — start the next workflow with: steps.sh set --name <name> <step>..." >&2
+  return 1
+}
+
 # update <name> <status> [detail] — rewrite matching row. After `done`, activate the first
 # planned row only if no row is active (out-of-order use never yields two ● at once).
 update() {
@@ -189,9 +209,11 @@ update() {
   local -a sts=() names=() details=()
   [[ -f "$STATE" ]] || { echo "steps.sh: no chain — run 'set' first" >&2; return 1; }
   safe_state || return 1
-  while IFS=$'\t' read -r st name detail; do
+  finished_hint || return 1
+  local at=-1
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do
     [[ -z "$name" ]] && continue
-    if [[ "$name" == "$target" ]]; then st="$newst"; detail="$newdetail"; hit=1; fi
+    if [[ "$name" == "$target" ]]; then st="$newst"; detail="$newdetail"; hit=1; at=${#sts[@]}; fi
     sts+=("$st"); names+=("$name"); details+=("$detail")
   done < "$STATE"
   [[ $hit == 1 ]] || { echo "steps.sh: unknown step '$target'" >&2; return 1; }
@@ -200,10 +222,15 @@ update() {
     for i in "${!sts[@]}"; do [[ "${names[$i]}" != "$target" && "${sts[$i]}" == active ]] && sts[$i]=planned; done
   fi
   for st in "${sts[@]}"; do [[ "$st" == active ]] && any_active=1; done
+  # advance forward only: finishing a step never re-opens a planned step before it (a skipped one)
   if [[ "$newst" == done && $any_active == 0 ]]; then
-    for i in "${!sts[@]}"; do [[ "${sts[$i]}" == planned ]] && { sts[$i]=active; break; }; done
+    for i in "${!sts[@]}"; do (( i > at )) && [[ "${sts[$i]}" == planned ]] && { sts[$i]=active; break; }; done
   fi
-  for i in "${!sts[@]}"; do printf '%s\t%s\t%s\n' "${sts[$i]}" "${names[$i]}" "${details[$i]}"; done | write_state
+  local new; new="$(for i in "${!sts[@]}"; do printf '%s\t%s\t%s\n' "${sts[$i]}" "${names[$i]}" "${details[$i]}"; done)"
+  # a no-op (e.g. `done` on a step that is already done) leaves the file alone: rewriting it would
+  # bump the mtime and revive a finished chain that has already expired
+  [[ "$new" == "$(cat "$STATE")" ]] && return 0
+  printf '%s\n' "$new" | write_state
 }
 
 check_steps() {
@@ -231,7 +258,7 @@ cycle_chain() {
   safe_state || return 1
   local cf="$DIR/$CHAIN.cycle" st name detail x
   local -a body=("$@") names=()
-  while IFS=$'\t' read -r st name detail; do [[ -n "$name" ]] && names+=("$name"); done < "$STATE"
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do [[ -n "$name" ]] && names+=("$name"); done < "$STATE"
   [[ ${#names[@]} -ge 1 ]] || { echo "steps.sh: empty chain — run 'set' first" >&2; return 1; }
   if [[ ${#body[@]} -eq 0 && -f "$cf" && ! -L "$cf" ]]; then          # reuse the stored body
     { IFS= read -r x; IFS= read -r x; } < "$cf"; IFS=$'\t' read -r -a body <<<"$x"
@@ -248,7 +275,7 @@ cycle_chain() {
   cnt=$((10#$cnt+1)); cnt="${cnt:0:6}"   # 10#: a hand-edited "08" is not octal; cap matches read_cycle
   local first=""                                                       # first body step in chain order → active
   for name in "${names[@]}"; do in_list "$name" "${body[@]}" && { first="$name"; break; }; done
-  { while IFS=$'\t' read -r st name detail; do
+  { while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do
       [[ -z "$name" ]] && continue
       if in_list "$name" "${body[@]}"; then detail=""; [[ "$name" == "$first" ]] && st=active || st=planned
       elif [[ "$st" == active ]]; then st=planned; fi   # re-arming the loop clears a stray active outside the body
@@ -265,7 +292,8 @@ msg_step() {
   valid_name "$who$text" || return 2
   [[ -f "$STATE" ]] || { echo "steps.sh: no chain — run 'set' first" >&2; return 1; }
   safe_state || return 1
-  while IFS=$'\t' read -r st name detail; do [[ "$st" == active ]] && { active="$name"; break; }; done < "$STATE"
+  finished_hint || return 1
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do [[ "$st" == active ]] && { active="$name"; break; }; done < "$STATE"
   [[ -n "$active" ]] || { echo "steps.sh: no active step to attach the message to" >&2; return 1; }
   update "$active" active "$arrow $who${text:+: $text}"
 }
@@ -378,18 +406,38 @@ selfcheck() {
   printf 'active\tx\t\n' > "$d/$(printf 'ev\033il').state"
   [[ "$(bash "$s" list)" != *$'\033'* ]] || fail list-control-bytes
   [[ "$(cat "$d/.gitignore")" == "*" ]] || fail gitignore
-  # a finished chain expires DONE_TTL after its last update; an unfinished one never does
+  # a finished chain (no active step, not a loop) expires DONE_TTL after its last update
   local old; old="$(date -v-2M +%Y%m%d%H%M 2>/dev/null || date -d '-2 min' +%Y%m%d%H%M)"
-  bash "$s" use ttl >/dev/null; bash "$s" set a b >/dev/null; bash "$s" done a >/dev/null; bash "$s" done b >/dev/null
+  age() { touch -t "$old" "$d/$1.state"; }
+  bash "$s" set --name ttl a b >/dev/null; bash "$s" done a >/dev/null; bash "$s" done b >/dev/null
   [[ "$(r)" == "[ttl] a ✓ → b ✓" ]] || fail "ttl-fresh-finished-shows: $(r)"
-  touch -t "$old" "$d/ttl.state"; [[ -z "$(r)" ]] || fail "ttl-finished-expires: $(r)"
+  age ttl; [[ -z "$(r)" ]] || fail "ttl-finished-expires: $(r)"
   [[ "$(bash "$s" list)" == *"[ttl] a ✓ → b ✓"* ]] || fail "ttl-list-keeps-history"
-  bash "$s" set a b >/dev/null; bash "$s" fail a >/dev/null; bash "$s" done b >/dev/null; touch -t "$old" "$d/ttl.state"
+  [[ "$(bash "$s" use ttl)" == "[ttl] a ✓ → b ✓ (finished)" ]] || fail "use-expired-says-finished: $(bash "$s" use ttl)"
+  bash "$s" done b 2>/dev/null && fail "edit-of-expired-accepted"                      # refused, and no revive
+  [[ -z "$(r)" ]] || fail "expired-revived: $(r)"
+  [[ "$(bash "$s" start a 2>&1)" == *"finished — start the next workflow with: steps.sh set --name"* ]] || fail "expired-hint"
+  [[ "$(bash "$s" set x y)" == "[default] x ● → y ○" ]] || fail "bare-set-after-finished-starts-default: $(r)"
+  [[ "$(bash "$s" list)" == *"[ttl] a ✓ → b ✓"* ]] || fail "bare-set-kept-old-chain"
+  # stopping at a ✗ is finished too; so is finishing the last step past a skipped one
+  bash "$s" set --name ttl a b c >/dev/null; bash "$s" fail a >/dev/null; age ttl
   [[ -z "$(r)" ]] || fail "ttl-failed-counts-as-finished: $(r)"
-  bash "$s" set a b >/dev/null; bash "$s" done a >/dev/null; touch -t "$old" "$d/ttl.state"
+  bash "$s" set --name ttl a b c >/dev/null; bash "$s" done a >/dev/null; bash "$s" start c >/dev/null; bash "$s" done c >/dev/null
+  [[ "$(r)" == "[ttl] a ✓ → b ○ → c ✓" ]] || fail "forward-only-advance: $(r)"               # b skipped, not re-opened
+  age ttl; [[ -z "$(r)" ]] || fail "skipped-step-still-finishes: $(r)"
+  # an active step, or a loop between passes, never expires
+  bash "$s" set --name ttl a b >/dev/null; bash "$s" done a >/dev/null; age ttl
   [[ "$(r)" == "[ttl] a ✓ → b ●" ]] || fail "ttl-unfinished-never-expires: $(r)"
-  STEP_STATUS_DONE_TTL=100000 bash "$s" done b >/dev/null; touch -t "$old" "$d/ttl.state"
+  bash "$s" set --name mon init poll >/dev/null; bash "$s" done init >/dev/null; bash "$s" cycle poll >/dev/null
+  bash "$s" done poll >/dev/null; age mon
+  [[ "$(r)" == "[mon] init ✓ → [poll ✓ ↻2]" ]] || fail "loop-never-expires: $(r)"
+  bash "$s" clear; bash "$s" use ttl >/dev/null
+  # a last row without a newline still counts; the TTL is configurable and base 10
+  printf 'done\ta\t\nactive\tb\t' > "$d/ttl.state"; age ttl
+  [[ "$(r)" == "[ttl] a ✓ → b ●" ]] || fail "last-row-without-newline: $(r)"
+  printf 'done\ta\t\ndone\tb\t\n' > "$d/ttl.state"; age ttl
   [[ "$(STEP_STATUS_DONE_TTL=100000 bash "$s" render)" == "[ttl] a ✓ → b ✓" ]] || fail "ttl-configurable"
+  [[ -z "$(STEP_STATUS_DONE_TTL=08 bash "$s" render 2>&1)" ]] || fail "ttl-leading-zero"
   bash "$s" clear; bash "$s" use default >/dev/null
   rm -rf "$root"; echo "selfcheck OK"
 }
@@ -399,6 +447,8 @@ main() {
   case "$cmd" in
     set)   if [[ "${1-}" == --name || "${1-}" == -n ]]; then
              need_name "${2-}" "set --name" && check_steps "${@:3}" && switch_chain "$2" || return $?; shift 2   # validate before touching `current'
+           elif expired "$STATE" && [[ "$CHAIN" != default ]]; then   # bare set after a finished chain: keep it, start `default`
+             check_steps "$@" && switch_chain default || return $?
            fi
            set_chain "$@" && render ;;
     start) need_name "${1-}" start && valid_name "${2-x}" && update "$1" active "${2-}" && render ;;
