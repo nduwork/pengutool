@@ -108,7 +108,7 @@ def test_route_walks_one_edge_at_a_time():
         routing.route(t, A, E)
 
 
-def test_guard_denies_before_delivery_and_fails_closed(monkeypatch, capsys, tmp_path):
+def test_guard_denies_only_a_checked_send(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(routing, "live_tree", _tree)
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(json.dumps(
         {"session_id": D, "tool_name": "SendMessage", "tool_input": {"to": "other", "message": "hi"}})))
@@ -118,16 +118,23 @@ def test_guard_denies_before_delivery_and_fails_closed(monkeypatch, capsys, tmp_
     monkeypatch.setattr(model, "GROUPS", tmp_path / "groups.json")
     (tmp_path / "groups.json").write_text("{torn")
     with pytest.raises(ValueError):
-        LIVE_TREE()  # the __main__ wrapper turns this into exit 2, which blocks the send
+        LIVE_TREE()                                     # a torn groups.json is never read as "no groups"...
+    monkeypatch.setattr(routing, "live_tree", LIVE_TREE)
+    monkeypatch.setattr(routing.time, "sleep", lambda s: None)
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(json.dumps(
+        {"session_id": D, "tool_name": "SendMessage", "tool_input": {"to": "other", "message": "hi"}})))
+    routing.main()
+    out = capsys.readouterr()
+    assert out.out == "" and "sent unchecked" in out.err  # ...but a guard that can't check never blocks
 
 
-def test_install_adds_a_fail_closed_guard_on_sendmessage(tmp_path):
+def test_install_adds_a_guard_on_sendmessage_that_never_blocks_on_error(tmp_path):
     settings = tmp_path / "settings.json"
     hook.install(settings)
     hook.install(settings)
     pre = json.loads(settings.read_text())["hooks"]["PreToolUse"]
     guards = [g for g in pre if g.get("matcher") == "SendMessage"]
-    assert len(guards) == 1 and guards[0]["hooks"][0]["command"].endswith("-m pengupool.routing || exit 2")
+    assert len(guards) == 1 and guards[0]["hooks"][0]["command"].endswith("-m pengupool.routing || true")
     hook.uninstall(settings)
     assert "hooks" not in json.loads(settings.read_text())
 
@@ -228,6 +235,12 @@ def test_a_message_from_another_session_is_not_a_request_to_route(home, monkeypa
     assert not prompt('[Cross-session idle notice] "kid", which you asked to be notified about, is idle now')
     assert not prompt("<task-notification> <task-id>x</task-id> the lexer report")
     assert prompt("fix the lexer")                                                   # the user's own request
+
+    # the user tagged C; C's reply arrives as a relayed prompt and must not revoke that line
+    monkeypatch.setattr(routing, "GRANTS", home / "grants")
+    model.write_json(routing.GRANTS / f"{A}.json", {"targets": [C], "ts": __import__("time").time()})
+    prompt('Another Claude session sent a message: <cross-session-message from-name="other">done')
+    assert routing.granted(A, C)
 
 
 def test_a_session_without_a_role_is_told_to_describe_itself_now(home, monkeypatch):

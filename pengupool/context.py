@@ -328,9 +328,11 @@ def main() -> None:
         return  # only these two inject the tree; other events just recorded state above
     # a solo session hears about its workspace and role once, at start, not on every prompt
     prompt = str(inp.get("prompt") or "") if event == "UserPromptSubmit" else ""
-    if RELAYED.match(prompt):
+    relayed = bool(RELAYED.match(prompt))
+    if relayed:
         prompt = ""
-    tagged = tag(sid, prompt) if event == "UserPromptSubmit" else []
+    # a relayed prompt leaves the user's @session grant alone: a reply must not cut the line it came on
+    tagged = tag(sid, prompt) if event == "UserPromptSubmit" and not relayed else []
     tree = load_tree() or {}
     route = route_match(tree, sid, prompt)
     ask, solo_ask = ask_role(tree, sid) if event == "UserPromptSubmit" else (False, False)
