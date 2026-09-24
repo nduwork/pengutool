@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- context use from 30% to 60% is yellow, between the green and the red (was the theme's orange)
+
+Ships with PenguPool v0.3.2.
+
 ## 0.2.0
 
 - light tree lines green for a message, milky blue for the reply
