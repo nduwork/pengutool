@@ -314,7 +314,7 @@ selfcheck() {
   [[ "$(r)" == "[default] init ✓ → loop ✓ → summary ✗" ]] || fail fail
   bash "$s" set a b c; bash "$s" start b; bash "$s" done a
   [[ "$(r)" == "[default] a ✓ → b ● → c ○" ]] || fail out-of-order
-  # single-active: `start` transfers active, never leaves two ● (greptile #3)
+  # single-active: `start` transfers active, never leaves two ●
   bash "$s" set a b; bash "$s" start b
   [[ "$(r)" == "[default] a ○ → b ●" ]] || fail "start-single-active: $(r)"
   bash "$s" set a a b 2>/dev/null && fail duplicate-accepted
@@ -362,7 +362,7 @@ selfcheck() {
   [[ "$(bash "$s" cycle fetch check)" == "[loop] [fetch ● → check ○ ↻2] → report ○" ]] || fail "cycle-2: $(r)"
   bash "$s" done fetch >/dev/null; bash "$s" done check >/dev/null   # loop body done → report auto-active
   [[ "$(r)" == "[loop] [fetch ✓ → check ✓ ↻2] → report ●" ]] || fail "cycle-report-active: $(r)"
-  # cycle with report ● must clear that stray active (single-active invariant, greptile #2)
+  # cycle with report ● must clear that stray active (single-active invariant)
   [[ "$(bash "$s" cycle)" == "[loop] [fetch ● → check ○ ↻3] → report ○" ]] || fail "cycle-clears-stray-active: $(r)"
   bash "$s" cycle zzz 2>/dev/null && fail cycle-unknown-step
   [[ "$(bash "$s" set fetch check report)" == "[loop] fetch ● → check ○ → report ○" ]] || fail "cycle-reset: $(r)"
@@ -393,7 +393,7 @@ selfcheck() {
   STEP_STATUS_DIR="$sd" bash "$s" clear 2>/dev/null && fail clear-through-symlink-dir
   [[ -e "$tgt/default.state" ]] || fail clear-deleted-through-symlink
   STEP_STATUS_DIR="$sd" bash "$s" list 2>/dev/null && fail list-through-symlink-dir
-  # symlinked state artifacts are refused, never written through (greptile #1)
+  # symlinked state artifacts are refused, never written through
   local out2="$d/../outside2"; : > "$out2"
   ln -sfn "$out2" "$d/current"; bash "$s" use victim >/dev/null 2>&1     # symlink → external file
   [[ -s "$out2" ]] && fail current-symlink-file-write
@@ -402,7 +402,7 @@ selfcheck() {
   [[ -n "$(ls -A "$outd")" ]] && fail current-symlink-dir-write
   rm -rf "$out2" "$outd" "$d/current"
   bash "$s" use default >/dev/null
-  # foreign *.state filename with control bytes is skipped by list, not printed (greptile #4)
+  # foreign *.state filename with control bytes is skipped by list, not printed
   printf 'active\tx\t\n' > "$d/$(printf 'ev\033il').state"
   [[ "$(bash "$s" list)" != *$'\033'* ]] || fail list-control-bytes
   [[ "$(cat "$d/.gitignore")" == "*" ]] || fail gitignore

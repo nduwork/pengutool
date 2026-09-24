@@ -20,9 +20,9 @@ Verbs:
     group <childSid> <parentSid|"">   move a session under a parent of the same harness, or "" for top level
     worktree-add <dir> <name>     git worktree for a session; print the path (or <dir>)
     past <dir>                    JSON [[sessionId, title, harness], …] of resumable past sessions
-    context <sid> [--prompt-stdin]  print the session-tree context block for a session (used by the pi
-                                  extension); with the user's prompt on stdin, its @session tags are
-                                  recorded first and let the session message those sessions directly
+    context <sid> [--prompt-stdin | --keyed-prompt-stdin]  print the session-tree context block for a
+                                  session (used by the pi extension); the prompt's @session tags open a
+                                  direct line only when the pi extension's key leads stdin
     slash <sid> compact | rename <name>  type the slash command into the session's own pane (user only)
     register <sid> <cwd> [--key-stdin]  create/refresh a session's profile (workspace scan; used by the pi extension)
     describe <sid> [--summary S] [--responsibility R] [--keywords "a, b"]

@@ -45,7 +45,7 @@ def _topo(roots: list[model.Node], cross: list[model.Edge]) -> str:
 
 
 def build() -> dict:
-    """One snapshot dict (no `rev`/`ts`; serve() adds those). Reuses model.snapshot()."""
+    """One snapshot dict (no `rev`/`ts`; serve() adds those)."""
     roots, cross, msgs = model.snapshot()
     return {"topo_hash": _topo(roots, cross),
             "roots": [_node(r) for r in roots],

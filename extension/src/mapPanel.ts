@@ -92,7 +92,7 @@ function html(webview: vscode.Webview, dagreUri: vscode.Uri): string {
               font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
   #wrap { position:absolute; inset:0; overflow:auto; }
   .edge { stroke: var(--vscode-descriptionForeground); stroke-opacity:.75; fill:none; stroke-width:2;
-          stroke-linejoin:round; }  /* panel-border is a faint divider colour: edges vanished against it */
+          stroke-linejoin:round; }  /* not panel-border: too faint for edges */
   /* a tree line lights up while a message travels on it: the Log's green down, milky blue for a reply */
   .edge { transition: stroke 300ms, stroke-width 300ms; }
   .edge.hot-down { stroke:#3fb950; stroke-opacity:1; stroke-width:3; }
