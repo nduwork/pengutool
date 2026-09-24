@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-23
+
 ### Fixed
 - Workflow tracker: a finished chain no longer lingers. A chain is finished when no step is active: all ✓, stopped at a ✗, or done past a skipped step. A minute after its last update it stops showing in the status line, the prompt hook, pi's footer and the map. Updates to it are refused with a pointer to `set --name`, and a bare `set` starts a new `default` chain instead of overwriting it, so the next workflow always gets its own chain. Loops never expire. `STEP_STATUS_DONE_TTL` changes the delay, and `list` still shows past chains.
 - Workflow tracker: a last row without a trailing newline is no longer dropped. Finishing a step never re-opens an earlier skipped one. A repeated `done` no longer rewrites the file.
@@ -13,6 +15,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - Context use from 30% to 60% is now yellow, between the green and the red, instead of the theme's orange.
 
+- Editor extension: 0.2.1 (install both with `install.sh`; they ship together in this tag).
 ## [0.3.1] - 2026-09-23
 
 ### Fixed
