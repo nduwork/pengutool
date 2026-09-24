@@ -48,9 +48,15 @@ lives in `./.step-status/` (self-ignoring, keyed by cwd).
    STEPS done loop                          # ✓ loop, auto-activates summary
    STEPS fail summary                       # ✗ if a step blows up
    ```
-3. **At the end**: post the finished chain (all `✓`) as the last progress line and leave it
-   in place. Clear only when the user asks, or right before `set` for an unrelated task
-   (`set` replaces the chain anyway). Session starts and compaction preserve the shared chain and reinject tracking instructions.
+3. **At the end**: post the finished chain as the last progress line. There's no need to clear it.
+   A chain is finished when no step is active: all `✓`, stopped at a `✗`, or the last step done past a
+   skipped `○`. A minute after its last update (`STEP_STATUS_DONE_TTL`, in seconds), it stops rendering
+   in the status line, the map and the next prompt. `start`/`done`/`fail`/`msg` then refuse it, and a
+   bare `set` starts `default` instead of overwriting it, so the next workflow always runs `set --name`
+   for its own chain. Its files stay, and `list` shows it as history (`use` marks it `(finished)`).
+   A chain with an active step never expires, and neither does a loop (a chain you have `cycle`d):
+   it ends only with `set` or `clear`. Session starts and compaction preserve the shared chain and
+   reinject tracking instructions.
 
 ### Messages between sessions
 

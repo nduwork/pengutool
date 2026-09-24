@@ -301,7 +301,13 @@ def status_dir(cwd: str) -> Path:
     hit = _STATUS_DIR_CACHE.get(cwd)
     if hit is not None:
         return hit
-    root = Path(cwd)
+    # like `git rev-parse --git-common-dir` in steps.sh: the nearest enclosing `.git` marks the repo,
+    # so a session in a subfolder shares its repo's tracker; outside any repo, the cwd itself
+    root = start = Path(cwd)
+    for up in (start, *start.parents):
+        if (up / ".git").exists():
+            root = up
+            break
     try:
         git = root / ".git"
         if git.is_file():  # linked worktree: point at the main repo root's .step-status
@@ -323,6 +329,11 @@ def status_dir(cwd: str) -> Path:
     return result
 
 
+# matches steps.sh; read from PenguPool's own environment, so set STEP_STATUS_DONE_TTL for both
+# the agent and the editor if you change it
+DONE_TTL = int(re.sub(r"\D", "", os.environ.get("STEP_STATUS_DONE_TTL", ""))[:9] or 60)
+
+
 def read_status(cwd: str, chain: str | None = None) -> str:
     """Render the workflow-tracker chain like steps.sh render (without ↻ loop brackets).
     `chain` selects a specific chain (the one this session uses); None follows the directory's `current`."""
@@ -342,14 +353,22 @@ def read_status(cwd: str, chain: str | None = None) -> str:
             text = fh.read(65536)  # cap: a hostile multi-GB file must not stall the poll
     except OSError:
         return ""
-    segs = []
+    segs, sts = [], []
     for line in text.splitlines():
         parts = line.split("\t")
         if len(parts) < 2 or not parts[1]:
             continue
         st, name, detail = (parts + [""])[:3]
+        sts.append(st)
         detail = re.sub(r"[\x00-\x1f\x7f]", "", detail)[:80]
         segs.append((f"{name}|{detail}" if detail else name) + " " + SYM.get(st, "○"))
+    # like steps.sh: a finished chain (no step active, not a loop) expires DONE_TTL after its last update
+    if "active" not in sts and not (d / f"{chain}.cycle").exists():
+        try:
+            if time.time() - state.stat().st_mtime > DONE_TTL:
+                return ""
+        except OSError:
+            return ""
     return f"[{chain}] " + " → ".join(segs) if segs else ""
 
 
