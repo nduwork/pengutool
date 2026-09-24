@@ -323,6 +323,9 @@ def status_dir(cwd: str) -> Path:
     return result
 
 
+DONE_TTL = int(re.sub(r"\D", "", os.environ.get("STEP_STATUS_DONE_TTL", "")) or 60)  # matches steps.sh
+
+
 def read_status(cwd: str, chain: str | None = None) -> str:
     """Render the workflow-tracker chain like steps.sh render (without ↻ loop brackets).
     `chain` selects a specific chain (the one this session uses); None follows the directory's `current`."""
@@ -342,14 +345,22 @@ def read_status(cwd: str, chain: str | None = None) -> str:
             text = fh.read(65536)  # cap: a hostile multi-GB file must not stall the poll
     except OSError:
         return ""
-    segs = []
+    segs, sts = [], []
     for line in text.splitlines():
         parts = line.split("\t")
         if len(parts) < 2 or not parts[1]:
             continue
         st, name, detail = (parts + [""])[:3]
+        sts.append(st)
         detail = re.sub(r"[\x00-\x1f\x7f]", "", detail)[:80]
         segs.append((f"{name}|{detail}" if detail else name) + " " + SYM.get(st, "○"))
+    # like steps.sh: a finished chain (every step done/failed) expires DONE_TTL after its last update
+    if sts and all(st in ("done", "failed") for st in sts):
+        try:
+            if time.time() - state.stat().st_mtime > DONE_TTL:
+                return ""
+        except OSError:
+            return ""
     return f"[{chain}] " + " → ".join(segs) if segs else ""
 
 

@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Workflow tracker: a finished chain (every step ✓ or ✗) stops showing a minute after its last update, in the status line, the prompt hook, pi's footer and the map. The next workflow is now told to `set` its own chain instead of inheriting the old one, and could otherwise go untracked. `STEP_STATUS_DONE_TTL` changes the delay; `list` still shows past chains.
+
 ### Changed
 - Context use from 30% to 60% is now yellow, between the green and the red, instead of the theme's orange.
 

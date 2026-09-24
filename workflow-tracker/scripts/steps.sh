@@ -18,6 +18,10 @@
 #   steps.sh note [text]              set (or print) a one-line context note for the current chain
 #   steps.sh --selfcheck              run the built-in check
 #
+# A finished chain (every step ✓ or ✗) expires DONE_TTL seconds after its last update
+# ($STEP_STATUS_DONE_TTL, default 60): render prints nothing, so the next workflow starts a fresh
+# chain instead of inheriting a stale one. Its files stay; `list` still shows it.
+#
 # State: $STEP_STATUS_DIR (default ./.step-status). `current` names the active chain (default:
 # "default"); <chain>.state holds one step per line, <chain>.note an optional context line:
 #   <status>\t<name>\t<detail>     status ∈ planned|active|done|failed
@@ -45,6 +49,22 @@ CHAIN="$( [[ -f "$DIR/current" && ! -L "$DIR/current" ]] && head -c 200 "$DIR/cu
 CHAIN="${CHAIN:-default}"
 STATE="$DIR/$CHAIN.state"
 NOTE="$DIR/$CHAIN.note"
+
+DONE_TTL="${STEP_STATUS_DONE_TTL:-60}"; DONE_TTL="${DONE_TTL//[^0-9]/}"; DONE_TTL="${DONE_TTL:-60}"
+
+# expired <state-file> — true when every step is done/failed and the file is older than DONE_TTL.
+# mtime is the last update, i.e. when the chain finished. GNU stat first; BSD/macOS stat second.
+expired() {
+  local f="$1" st name detail
+  [[ -f "$f" ]] || return 1
+  while IFS=$'\t' read -r st name detail; do
+    [[ -z "$name" ]] && continue
+    [[ "$st" == done || "$st" == failed ]] || return 1
+  done < "$f"
+  local m; m="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)" || return 1
+  [[ "$m" =~ ^[0-9]+$ ]] || return 1
+  (( $(date +%s) - m > DONE_TTL ))
+}
 
 sym() { case "$1" in done) printf '✓';; active) printf '●';; failed) printf '✗';; *) printf '○';; esac; }
 
@@ -86,6 +106,7 @@ render() {
   safe_state || return 0
   local bf="" bl="" cnt="" info; info="$(read_cycle)"
   IFS=$'\t' read -r bf bl cnt <<<"$info"
+  expired "$STATE" && return 0   # finished a while ago: no longer the repo's current workflow
   local line; line="$(render_file "$STATE" "$bf" "$bl" "$cnt")"
   [[ -n "$line" ]] && printf '[%s] %s\n' "$CHAIN" "$line"
 }
@@ -357,6 +378,19 @@ selfcheck() {
   printf 'active\tx\t\n' > "$d/$(printf 'ev\033il').state"
   [[ "$(bash "$s" list)" != *$'\033'* ]] || fail list-control-bytes
   [[ "$(cat "$d/.gitignore")" == "*" ]] || fail gitignore
+  # a finished chain expires DONE_TTL after its last update; an unfinished one never does
+  local old; old="$(date -v-2M +%Y%m%d%H%M 2>/dev/null || date -d '-2 min' +%Y%m%d%H%M)"
+  bash "$s" use ttl >/dev/null; bash "$s" set a b >/dev/null; bash "$s" done a >/dev/null; bash "$s" done b >/dev/null
+  [[ "$(r)" == "[ttl] a ✓ → b ✓" ]] || fail "ttl-fresh-finished-shows: $(r)"
+  touch -t "$old" "$d/ttl.state"; [[ -z "$(r)" ]] || fail "ttl-finished-expires: $(r)"
+  [[ "$(bash "$s" list)" == *"[ttl] a ✓ → b ✓"* ]] || fail "ttl-list-keeps-history"
+  bash "$s" set a b >/dev/null; bash "$s" fail a >/dev/null; bash "$s" done b >/dev/null; touch -t "$old" "$d/ttl.state"
+  [[ -z "$(r)" ]] || fail "ttl-failed-counts-as-finished: $(r)"
+  bash "$s" set a b >/dev/null; bash "$s" done a >/dev/null; touch -t "$old" "$d/ttl.state"
+  [[ "$(r)" == "[ttl] a ✓ → b ●" ]] || fail "ttl-unfinished-never-expires: $(r)"
+  STEP_STATUS_DONE_TTL=100000 bash "$s" done b >/dev/null; touch -t "$old" "$d/ttl.state"
+  [[ "$(STEP_STATUS_DONE_TTL=100000 bash "$s" render)" == "[ttl] a ✓ → b ✓" ]] || fail "ttl-configurable"
+  bash "$s" clear; bash "$s" use default >/dev/null
   rm -rf "$root"; echo "selfcheck OK"
 }
 

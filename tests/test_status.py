@@ -86,3 +86,26 @@ def test_map_snapshots_refresh_chain_and_statusline_context(tmp_path, monkeypatc
     assert after['topo_hash'] == before['topo_hash']
     assert after['roots'][0]['ctx_pct'] == 2.1
     assert after['roots'][0]['status'] == '[fix] diagnose ✓ → verify ●'
+
+
+def test_a_finished_chain_expires_a_minute_after_its_last_update(tmp_path):
+    """Like steps.sh render: once every step is done or failed, the chain stops showing on the map
+    60 s after its last write, so the next workflow isn't read as the old one."""
+    import os, time
+    model._STATUS_DIR_CACHE.clear()
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    ss = repo / ".step-status"
+    ss.mkdir()
+    (ss / "current").write_text("ship")
+    state = ss / "ship.state"
+    old = time.time() - 120
+
+    state.write_text("done\tbuild\t\nfailed\tdeploy\t\n")        # finished (✓ and ✗), just now
+    assert model.read_status(str(repo)) == "[ship] build ✓ → deploy ✗"
+    os.utime(state, (old, old))                                  # finished two minutes ago
+    assert model.read_status(str(repo)) == ""
+
+    state.write_text("done\tbuild\t\nactive\tdeploy\t\n")        # still running: never expires
+    os.utime(state, (old, old))
+    assert model.read_status(str(repo)) == "[ship] build ✓ → deploy ●"
