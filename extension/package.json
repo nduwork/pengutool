@@ -215,7 +215,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^26.6.2",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^4.0.0",
     "dagre": "^0.8.5",
