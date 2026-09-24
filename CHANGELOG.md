@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Context use from 30% to 60% is now yellow, between the green and the red, instead of the theme's orange.
+
 ## [0.3.1] - 2026-09-23
 
 ### Fixed

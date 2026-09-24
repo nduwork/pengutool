@@ -35,7 +35,7 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | **Caption** | One command installs the backend, the harness wiring and the editor extension. |
 | **Live demo** | Run it for real beforehand; on stage, show the output and reload the window. Nothing to configure. |
 
-## Scene 2 · Start a pool (≈20 s)
+## Scene 2 · Start a team (≈20 s)
 
 ![Scene 2: Start a pool](assets/tutorial/2-start-a-pool.gif)
 
@@ -43,7 +43,7 @@ login form in the frontend, and `deploy` ships both to staging. All of it runs f
 | --- | --- |
 | **Shot** | Sidebar focused. |
 | **Action** | Press `n` for each session and pick its repo. `lead` starts in `~/code/shop` with **Use selected folder**. `api` starts in `~/code/shop-api` with **Create a worktree**, so its repo shows `shop-api-wt-token`. `web` (`~/code/shop-web`) and `deploy` (`~/code/shop-deploy`) use their folders; `payments` (`~/code/shop-payments`) is another team's app that stays ungrouped; and `docs-writer` runs **pi** in the monorepo (it lands under *Pi Sessions*). Each appears as ● Active in the sidebar and as a card on the map. |
-| **Caption** | Press n for each session: pick its repo, a new worktree or the folder itself, and the harness. |
+| **Caption** | Press n for each agent: pick its repo, a new worktree or the folder itself, and the harness. |
 | **Live demo** | Say why `api` gets a worktree: the feature lands as its own branch while the backend's main checkout stays free. The other apps work in their own folders. |
 
 ## Scene 3 · Group the children (≈10 s)

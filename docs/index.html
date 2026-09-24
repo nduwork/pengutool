@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="PenguPool is a VS Code/Cursor extension and pi extension that keeps Claude Code and pi sessions in one view: session tree, live map, message log, and tmux-backed terminals.">
+  <meta name="description" content="PenguPool turns Claude Code and pi sessions into an agent team you can manage from VS Code or Cursor: a lead that routes work to the agents that own it, a live map of who is messaging whom, the message log, and one terminal per harness.">
   <meta name="theme-color" content="#0b1320">
-  <title>PenguPool — agent sessions in your editor</title>
+  <title>PenguPool — agent teams in your editor</title>
   <link rel="canonical" href="https://pengupool.nduwork.com/">
   <link rel="icon" type="image/svg+xml" href="assets/penguin.svg">
   <link rel="stylesheet" href="style.css">
@@ -26,26 +26,29 @@
   <main id="top">
     <section class="hero wrap">
       <div class="hero-copy">
-        <span class="eyebrow"><span class="pulse"></span> VS CODE · CURSOR · PI</span>
-        <h1>Every agent session.<br><em>In your editor.</em></h1>
-        <p>The PenguPool extension puts your Claude Code and pi sessions in the VS Code or Cursor sidebar: a session tree, a live map of who is talking to whom, the message log, and a terminal that switches between live sessions without restarting them.</p>
+        <span class="eyebrow"><span class="pulse"></span> VS CODE · CURSOR · CLAUDE CODE · PI</span>
+        <h1>Build an agent team.<br><em>Actually manage it.</em></h1>
+        <p>PenguPool puts Claude Code and pi agents into a team you run from VS Code or Cursor. Put a lead over the agents that own each repo, and talk to the lead: it routes each part to the agent that owns it. The map shows who is messaging whom and what each agent is doing, so you can always see what the team is up to.</p>
         <div class="install-box" id="install">
           <div class="cmd"><span class="pmt" aria-hidden="true">$</span><code id="cmd">curl -fsSL https://pengupool.nduwork.com/install.sh | bash</code></div>
           <button type="button" id="copy" aria-label="Copy install command">Copy</button>
         </div>
         <p class="install-note">Installs the CLI, the wiring for each installed harness, and the extension in every VS Code and Cursor it finds. Needs Python 3.11+, Make, tmux 3.2+, and Claude Code and/or pi. <a href="https://github.com/nduwork/pengutool#install">Other install options →</a></p>
-        <div class="actions">
-          <a class="button secondary" href="#tutorial">Watch the demo</a>
-          <a class="button secondary" href="#guide">Read the guide</a>
-        </div>
         <p class="hero-note">Open source · MIT · macOS &amp; Linux · <a class="ver" href="https://github.com/nduwork/pengutool/releases/latest">latest release</a> · local only, no hosted account</p>
       </div>
     </section>
 
     <section class="tutorial wrap" id="tutorial" aria-labelledby="tut-h">
-      <div class="section-intro"><span class="eyebrow">SEE IT IN ACTION</span><h2 id="tut-h">From install to a working pool.</h2><p>Seven short scenes, played on the real layout: a lead in the monorepo that manages the apps, with the backend, frontend and deployment repos as its children, and one request routed through the tree.</p></div>
+      <div class="team-intro">
+        <h2 id="tut-h">Your first team in three steps</h2>
+        <ol class="team-steps">
+          <li><b>Add the agents.</b> Press <kbd>n</kbd> for each one and pick its repo: the folder itself, or a new worktree.</li>
+          <li><b>Put a lead over them.</b> Drag each agent onto the lead, then tell the lead what each one owns.</li>
+          <li><b>Talk to the lead.</b> It routes each part to the agent that owns it. Watch it happen on the map and in the Log.</li>
+        </ol>
+      </div>
       <div class="tut" id="tut">
-        <div class="ide" id="stage" role="img" aria-label="Animated walkthrough of the PenguPool extension in Cursor: a monorepo lead session with backend, frontend and deployment child sessions; the caption below describes each scene">
+        <div class="ide" id="stage" role="img" aria-label="Animated walkthrough of the PenguPool extension in Cursor: an agent team with a lead in the monorepo and backend, frontend and deployment agents under it; the caption below describes each scene">
           <div class="ide-title"><div class="dots"><i></i><i></i><i></i></div><span>shop — Cursor</span><span></span></div>
           <div class="ide-body">
             <div class="ide-activity" aria-hidden="true"><span>⧉</span><span>⌕</span><span>⑂</span><span class="on"><img src="assets/penguin.svg" alt=""></span></div>
@@ -96,7 +99,7 @@
     </section>
 
     <section class="features wrap" id="guide">
-      <div class="section-intro"><span class="eyebrow">WORKING WITH A POOL</span><h2>Brief the tree, then let it route.</h2><p>PenguPool enforces the tree, but the agents only know what you tell them. These habits keep work flowing to the session that owns it.</p></div>
+      <div class="section-intro"><span class="eyebrow">RUNNING A TEAM</span><h2>Brief the team, then let it route.</h2><p>PenguPool enforces who may message whom, but the agents only know what you tell them. These habits keep work flowing to the agent that owns it.</p></div>
       <div class="feature-grid guide-grid">
         <article><span class="step">1</span><h3>Tell the parent about every new child</h3><p>After you add and group a session, tell its parent it exists and how you plan to use it. Then give the child its job.</p><pre class="snip">I added api under you. It owns the REST endpoints in server/. Route API work to it and keep planning and review yourself.</pre></article>
         <article><span class="step">2</span><h3>Check each role, edit when needed</h3><p>Roles are automatic: a new session is told <code>ROLE REQUIRED</code> until it describes itself, routing keywords included. Hover a row to review it. Right-click → <b>Describe Role…</b> to edit the summary and brief, or set keywords yourself.</p><pre class="snip">pengupool ctl describe &lt;id&gt; --keywords "api, endpoint, auth"</pre></article>
@@ -109,11 +112,11 @@
     </section>
 
     <section class="features wrap" id="how-it-works">
-      <div class="section-intro"><span class="eyebrow">BUILT FOR MANY MOVING PARTS</span><h2>Keep the whole pool in sight.</h2><p>PenguPool makes local agent work easier to follow while the agents keep running in their own sessions.</p></div>
+      <div class="section-intro"><span class="eyebrow">OBSERVABILITY</span><h2>See the whole team at work.</h2><p>Every agent keeps running in its own session. PenguPool shows who owns what, who is messaging whom, and who is waiting on you.</p></div>
       <div class="feature-grid">
         <article><div class="feature-icon">⌘</div><h3>Switch without starting over</h3><p>Open live tmux sessions from any editor window. Close the editor and come back to the same work.</p></article>
-        <article><div class="feature-icon">⑂</div><h3>Route work, not guesses</h3><p>Group sessions into a tree. Messages go only one edge at a time, and tagging <code>@payments</code> in a prompt opens a direct line until your next one.</p></article>
-        <article><div class="feature-icon">◎</div><h3>Give each session room</h3><p>Start in the same folder as other sessions or in an isolated git worktree, describe each session's role and routing keywords, and track its current phase.</p></article>
+        <article><div class="feature-icon">⑂</div><h3>Route work, not guesses</h3><p>Arrange the team as a tree. Messages go only one edge at a time, and tagging <code>@payments</code> in a prompt opens a direct line until your next one.</p></article>
+        <article><div class="feature-icon">◎</div><h3>Give each agent room</h3><p>Start an agent in the same folder as others or in its own git worktree, give it a role and routing keywords, and follow its current phase on the map.</p></article>
       </div>
     </section>
 

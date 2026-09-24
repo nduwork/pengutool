@@ -224,7 +224,7 @@
         await say(esc(l), l.startsWith('✓') ? 'ok' : 'dim', 330);
       await say('Done. Reload your editor window, then open the PenguPool view.', 'dim', 900);
     } },
-    { t: 'Start a pool', p: 'Press n for each session: pick its repo, a new worktree or the folder itself, and the harness.', run: async () => {
+    { t: 'Start a team', p: 'Press n for each agent: pick its repo, a new worktree or the folder itself, and the harness.', run: async () => {
       await point('.ide-side', 0.5, 0.25);
       await newSession('lead', '~/code/shop', 'folder', 'cc', { repo: 'shop', ctx: 6 });
       await tab('lead');
