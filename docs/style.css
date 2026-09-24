@@ -156,7 +156,7 @@ body.record .tut{margin:0;width:1100px;padding:16px}
 @media(max-width:650px){nav a:nth-child(-n+4){display:none}}
 #tplay[hidden]{display:none}
 .tut-ctl .button{background:transparent;color:var(--text);font-family:inherit;cursor:pointer}.tut-ctl .button:hover{border-color:var(--mint);color:var(--mint)}
-.ctx-low{color:#73c991}.ctx-mid{color:#e8a13a}.ctx-high{color:#f48771}
+.ctx-low{color:#73c991}.ctx-mid{color:#cca700}.ctx-high{color:#f48771}
 .hero-note .ver{text-decoration:underline;text-underline-offset:2px}
 /* the map's legend, as the extension draws it */
 .map-pane{padding-bottom:22px}
@@ -168,3 +168,17 @@ body.record .tut{margin:0;width:1100px;padding:16px}
 .term .sl{font-size:10.5px;line-height:1.5;color:#9d9d9d;padding-left:4px}
 .term .sl:first-of-type{margin-top:4px}
 .lrow{align-items:baseline}.lrow span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* the hero leads straight into the demo: headline, install line, then the three-step intro over the player */
+.hero{grid-template-columns:1fr;text-align:center;padding-top:80px;padding-bottom:36px}
+.hero-copy{margin:0 auto;width:100%}
+.hero-copy>p{margin-left:auto;margin-right:auto;max-width:720px}
+.hero .install-box,.hero .install-note{margin-left:auto;margin-right:auto}
+.team-intro{text-align:center}
+.team-intro h2{font-size:clamp(22px,2.4vw,28px);letter-spacing:-.03em;margin:8px 0 18px}
+.team-steps{list-style:none;counter-reset:s;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0;padding:0;text-align:left}
+.team-steps li{counter-increment:s;background:#132231;border:1px solid #29414f;border-radius:10px;padding:14px 16px 14px 50px;position:relative;font-size:14px;line-height:1.55;color:var(--muted)}
+.team-steps li b{color:var(--text)}
+.team-steps li::before{content:counter(s);position:absolute;left:14px;top:13px;width:24px;height:24px;border-radius:50%;background:var(--mint);color:#0d2530;font-weight:800;font-size:13px;display:grid;place-items:center}
+.team-steps kbd{font-size:12px}
+@media(max-width:900px){.team-steps{grid-template-columns:1fr}}
+body.record .team-intro{display:none}

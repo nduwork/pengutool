@@ -17,6 +17,6 @@ export const SESSION_STATE_CSS = `
 export const CTX_LEVEL_JS = `function ctxLevel(p){ return p < 30 ? 'ctx-low' : p < 60 ? 'ctx-mid' : 'ctx-high'; }`;
 export const CTX_LEVEL_CSS = `
   .ctx-low { color: var(--vscode-charts-green, #388a34); }
-  .ctx-mid { color: var(--vscode-charts-orange, #d18616); }
+  .ctx-mid { color: var(--vscode-charts-yellow, #cca700); }   /* traffic light: between the green and the red */
   .ctx-high { color: var(--vscode-charts-red, #e51400); }
 `;
