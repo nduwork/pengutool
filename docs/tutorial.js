@@ -37,13 +37,17 @@
     $('.ide-side').innerHTML = h;
   }
   function layout() {
-    const roots = S.sessions.filter((s) => s.h === 'cc' && !s.parent);
+    // as the real map: once a tree exists, sessions outside every tree stack in a column on the right
+    const all = S.sessions.filter((s) => s.h === 'cc' && !s.parent), grouped = all.some((r) => kids(r.id).length);
+    const loners = grouped ? all.filter((r) => !kids(r.id).length) : [], roots = all.filter((r) => !loners.includes(r));
+    const area = loners.length ? 70 : 92;
     const units = roots.map((r) => Math.max(1, kids(r.id).length));
     const total = units.reduce((a, b) => a + b, 0) || 1;
-    const w = Math.min(29, 92 / total);
+    const w = Math.min(29, area / total);
     const pos = {}; let start = 0;
+    loners.forEach((r) => { pos[r.id] = { x: 79, y: 0, w: 20, col: true }; });  // left edge; stacked in renderMap
     roots.forEach((r, i) => {
-      const x0 = 4 + (start / total) * 92, span = (units[i] / total) * 92, ks = kids(r.id);
+      const x0 = 4 + (start / total) * area, span = (units[i] / total) * area, ks = kids(r.id);
       pos[r.id] = { x: x0 + span / 2, y: ks.length ? 10 : 36, w: ks.length ? Math.min(60, w * 2.5) : w };  // room for the chain
       ks.forEach((k, j) => { pos[k.id] = { x: x0 + span * (j + 0.5) / ks.length, y: 62, w }; });
       start += units[i];
@@ -52,22 +56,34 @@
   }
   function renderMap() {
     const pane = $('.cards'), pos = layout();
+    const grouped = S.sessions.some((x) => x.h === 'cc' && x.parent);
     for (const s of S.sessions.filter((x) => x.h === 'cc')) {
       let el = pane.querySelector(`[data-id="${s.id}"]`);
       if (!el) { el = document.createElement('div'); el.dataset.id = s.id; el.className = 'card fade'; pane.appendChild(el); }
       const p = pos[s.id];
-      el.className = el.className.replace(/\bst-\w+|\bsel\b|\bblink\b/g, '').trim() + ` st-${s.state}` + (S.sel === s.id ? ' sel' : '') + (s.blink ? ' blink' : '');
+      const lead = !s.parent && kids(s.id).length, lone = grouped && !s.parent && !lead;  // as the real map marks them
+      el.className = el.className.replace(/\bst-\w+|\bsel\b|\bblink\b|\blone\b/g, '').trim() + ` st-${s.state}` + (S.sel === s.id ? ' sel' : '') + (s.blink ? ' blink' : '') + (lone ? ' lone' : '');
       Object.assign(el.style, { left: p.x + '%', top: p.y + '%', width: p.w + '%' });
+      el.classList.toggle('col', !!p.col);
       const chain = !s.parent && kids(s.id).length && S.chain ? `<div class="ch">${esc(S.chain)}</div>` : '';
-      el.innerHTML = `<div class="st">${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
+      el.innerHTML = `<div class="st">${lead ? '<span class="chip">LEAD</span>' : ''}${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
         + `<div class="meta">${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}%</span></div>${chain}`;
     }
+    // tree lines; the last two messages light theirs as the real map does: green down, milky blue for a reply
+    const lit = { lg: '', lb: '' }, recent = S.logs.slice(-2);
     let d = '';
     for (const s of S.sessions.filter((x) => x.h === 'cc' && x.parent)) {
       const a = pos[s.parent], b = pos[s.id]; if (!a || !b) continue;
-      d += `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `;
+      const seg = `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `; d += seg;
+      const m = recent.filter((l) => (l.src === s.parent && l.dst === s.id) || (l.src === s.id && l.dst === s.parent)).pop();
+      if (m) lit[m.src === s.parent ? 'lg' : 'lb'] += seg;
     }
     $('.edges path').setAttribute('d', d);
+    $('.edges path.g').setAttribute('d', lit.lg); $('.edges path.b').setAttribute('d', lit.lb);
+    // the ungrouped column: left-aligned, the same 12px gap between cards whatever their heights
+    let top = 50;
+    pane.querySelectorAll('.card.col').forEach((c) => { c.style.top = top + 'px'; top += c.offsetHeight + 12; });
+    $('.ucol').hidden = !pane.querySelector('.card.col');
     const empty = !S.sessions.some((x) => x.h === 'cc');
     $('.map-empty').hidden = !empty;
   }
@@ -107,7 +123,7 @@
   async function tab(name) { S.tab = name; S.term = []; if (find(name)) S.sel = name; render(); await wait(250); }
   async function add(s) { S.sessions.push({ state: 'active', ctx: 4, ...s }); S.sel = s.id; render(); await wait(500); }
   async function set(id, patch) { Object.assign(find(id), patch); render(); await wait(300); }
-  async function log(src, dst, text, c) { S.logs.push({ k: S.logs.length, ts: stamp(), src, dst, text, c }); renderLog(); await wait(600); }
+  async function log(src, dst, text, c) { S.logs.push({ k: S.logs.length, ts: stamp(), src, dst, text, c }); renderLog(); renderMap(); await wait(600); }
   async function chain(text) { S.chain = text; render(); await wait(400); }
 
   // pointer, overlays

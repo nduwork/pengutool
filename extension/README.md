@@ -46,7 +46,12 @@ terminal; focused map nodes also respond to Enter and Space.
 Right-click a session row for its actions. Right-click empty space in Sessions to create a new
 session or add a previous one.
 The list and map share state cues: `● Active`, `◷ Waiting`, `○ Stale`, and `? Approval`.
-The map marks the selected session with a separate focus outline.
+The map marks the selected session with a separate focus outline. The top of each tree carries a `LEAD`
+tag. Sessions outside every tree have a dashed border and stack in an **Ungrouped** column on the right,
+left-aligned with an even gap between them, so they never mix into a tree. Lines meet at right angles and never pass
+behind a card. When a parent messages a child, the line between them lights green for 90 seconds, and it turns
+milky blue when the child replies (the Log's colours). The map toolbar switches between **Top-down** and
+**Left-right** and between **Compact** and **Roomy** spacing, and the map remembers both.
 
 When creating a session, PenguPool asks whether to create an isolated worktree or use the selected
 folder, then which harness to run: Claude Code or pi. Several sessions can share a folder, so using the

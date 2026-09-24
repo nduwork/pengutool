@@ -144,7 +144,7 @@ function fakeDom() {
   const make = () => {
     const e = {
       style: {}, children: [], textContent: '', className: '',
-      setAttribute(k, v) { if (k === 'class') { e.className = v; } }, appendChild(c) { e.children.push(c); },
+      attrs: {}, setAttribute(k, v) { e.attrs[k] = v; if (k === 'class') { e.className = v; } }, appendChild(c) { e.children.push(c); },
       addEventListener() {}, set innerHTML(_) { e.children = []; },
       getBoundingClientRect: () => (/\bprobe\b/.test(e.className)
         ? { height: e.children.length * 14 + 12 } : { width: e.textContent.length * 6 }),
@@ -261,4 +261,125 @@ test('map cards stay compact without a chain and grow with its length', () => {
   assert.ok(long.width > short.width || long.height > short.height);
   assert.ok(long.width * long.height > short.width * short.height);
   assert.deepEqual({ ...size('', 100) }, { ...size('', 2) }, 'ctx % changes never resize a card');
+});
+
+// dagre stand-in: each node sits where the test says (x, y are centres, as dagre reports them).
+function fakeDagre(at) {
+  class Graph {
+    constructor() { this.n = {}; this.e = []; }
+    setGraph() {} setDefaultEdgeLabel() {} graph() { return { width: 400, height: 300 }; }
+    setNode(id, size) { this.n[id] = { ...size, ...at[id] }; } node(id) { return this.n[id]; }
+    setEdge(a, b) { this.e.push({ v: a, w: b }); } edges() { return this.e; }
+    nodes() { return Object.keys(this.n); } edge() { return { points: [] }; }
+  }
+  return { graphlib: { Graph }, layout() {} };
+}
+
+function drawMap(snap, at) {
+  const h = loadPanel('mapPanel');
+  h.exports.MapPanel.show({ extensionUri: 'extension' }, snapshot, 1);
+  const script = [...h.html().matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)[1];
+  const dom = fakeDom(); const scene = dom.getElementById('scene');
+  dom.getElementById = (id) => (id === 'scene' ? scene : fakeDom().body);
+  const sandbox = { acquireVsCodeApi: () => ({ postMessage() {} }), document: dom, window: { addEventListener() {} }, dagre: fakeDagre(at) };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  sandbox.snap = snap;
+  vm.runInContext('relayout(snap)', sandbox);
+  drawMap.sandbox = sandbox;
+  return scene.children;
+}
+
+// Every straight run in a path is horizontal or vertical; bends are Q curves.
+function rightAngled(d) {
+  let x, y;
+  for (const [, cmd, args] of d.matchAll(/([MLQ])([^MLQ]*)/g)) {
+    const nums = args.trim().split(/[ ,]+/).map(Number);
+    const [nx, ny] = nums.slice(-2);
+    if (cmd === 'L' && Math.abs(nx - x) > 1e-9 && Math.abs(ny - y) > 1e-9) return false;
+    [x, y] = [nx, ny];
+  }
+  return true;
+}
+
+const lead = { ...cc('l', 'lead', [{ ...cc('a', 'api'), label: 'add the refresh endpoint' }, cc('w', 'web')]) };
+const at = { l: { x: 200, y: 30 }, a: { x: 100, y: 130 }, w: { x: 300, y: 130 }, p: { x: 380, y: 30 } };
+
+test('map tree edges are right-angled paths with a masked label beside the drop', () => {
+  const out = drawMap({ roots: [lead], cross: [] }, at);
+  const paths = out.filter((e) => e.className === 'edge');
+  assert.equal(paths.length, 2);
+  for (const p of paths) assert.ok(rightAngled(p.attrs.d), p.attrs.d);
+  const mask = out.find((e) => e.className === 'emask'), text = out.find((e) => e.className === 'elabel');
+  assert.ok(mask && text, 'label drawn on a mask');
+  assert.ok(Number(mask.attrs.x) >= 100 + 6, 'mask sits 6px beside the drop');
+  assert.ok(out.indexOf(mask) > out.indexOf(paths[1]), 'labels are drawn over the edges');
+});
+
+test('map lights a tree line green for a message and milky blue for the reply, then lets it fade', () => {
+  const now = Date.parse('2026-09-23T12:00:00Z'), ago = (s) => new Date(now - s * 1000).toISOString();
+  const msgs = [[ago(10), 'lead', 'api', 'add the endpoint', false], [ago(5), 'api', 'lead', 'done', false],
+                [ago(20), 'lead', 'web', 'wire the form', false], [ago(300), 'lead', 'deploy', 'old', false],
+                [ago(3), 'web', 'payments', '@ question', false]];
+  const snap = { roots: [lead, cc('p', 'payments')], cross: [], msgs };
+  const out = drawMap(snap, at);
+  drawMap.sandbox.snap = snap;
+  vm.runInContext(`restyle(snap, ${now})`, drawMap.sandbox);
+  const edges = out.filter((e) => /\bedge\b/.test(e.className));
+  assert.equal(edges.length, 2, 'tree lines only; no line for the @ message to an ungrouped session');
+  const [toApi, toWeb] = edges;   // tree order: lead>api, lead>web
+  assert.match(toApi.className, /hot-up/, 'the latest message on lead–api is the reply');
+  assert.match(toWeb.className, /hot-down/);
+  vm.runInContext(`restyle(snap, ${now + 120000})`, drawMap.sandbox);
+  assert.ok(edges.every((e) => e.className === 'edge'), 'back to plain after the hot window');
+});
+
+test('map marks the lead of a tree and dashes ungrouped sessions', () => {
+  const out = drawMap({ roots: [lead, cc('p', 'payments')], cross: [] }, at);
+  const cards = out.filter((e) => /\bnode\b/.test(e.className));
+  const byName = (n) => cards.find((c) => c.attrs['aria-label'] === 'Open ' + n);
+  assert.match(byName('payments').className, /\blone\b/);
+  assert.doesNotMatch(byName('lead').className, /\blone\b/);
+  const chips = (card) => JSON.stringify(card, (k, v) => (k === 'children' || k === 'className' || k === 'textContent' || !k || /^\d+$/.test(k) ? v : undefined));
+  assert.match(chips(byName('lead')), /"chip"[^}]*"LEAD"|"LEAD"[^}]*"chip"/);
+  assert.doesNotMatch(chips(byName('api')), /LEAD/);
+  // nothing grouped: no session is singled out as ungrouped
+  const solo = drawMap({ roots: [cc('p', 'payments'), cc('l', 'lead')], cross: [] }, at);
+  assert.ok(solo.filter((e) => /\bnode\b/.test(e.className)).every((c) => !/\blone\b/.test(c.className)));
+});
+
+test('map options switch direction and spacing, and stay across redraws', () => {
+  const pay = cc('p', 'payments');
+  const snap = { roots: [lead, pay], cross: [['web', 'payments', 'logout?']] };
+  // left-right: tree edges leave the parent's right side and bend in the gap between the columns
+  const lr = { l: { x: 60, y: 150 }, a: { x: 300, y: 60 }, w: { x: 300, y: 240 }, p: { x: 540, y: 240 } };
+  const h = loadPanel('mapPanel');
+  h.exports.MapPanel.show({ extensionUri: 'extension' }, snapshot, 1);
+  const script = [...h.html().matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)[1];
+  let state = { opts: { dir: 'LR' } };
+  const dom = fakeDom(); const scene = dom.getElementById('scene');
+  dom.getElementById = (id) => (id === 'scene' ? scene : fakeDom().body);
+  const sandbox = { acquireVsCodeApi: () => ({ postMessage() {}, getState: () => state, setState: (s) => { state = s; } }),
+    document: dom, window: { addEventListener() {} }, dagre: fakeDagre(lr), snap };
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox);
+  vm.runInContext('relayout(snap)', sandbox);
+  const paths = scene.children.filter((e) => e.className === 'edge');
+  assert.equal(paths.length, 2);
+  for (const p of paths) assert.ok(rightAngled(p.attrs.d), p.attrs.d);
+  assert.match(paths[0].attrs.d, /^M\d+(\.\d+)?,150 /, 'starts on the lead card, at its centre line');
+  vm.runInContext("setOpt('spacing', 'roomy')", sandbox);
+  assert.equal(state.opts.spacing, 'roomy', 'saved in the webview state');
+  assert.equal(state.opts.dir, 'LR');
+});
+
+test('map stacks ungrouped sessions in one aligned column right of the trees', () => {
+  const out = drawMap({ roots: [lead, cc('p', 'payments'), cc('q', 'billing')], cross: [] }, at);
+  const card = (n) => out.find((c) => c.attrs['aria-label'] === 'Open ' + n);
+  const pos = (n) => card(n).attrs.transform.match(/translate\(([-\d.]+),([-\d.]+)\)/).slice(1).map(Number);
+  const [px, py] = pos('payments'), [qx, qy] = pos('billing');
+  assert.equal(px, qx, 'one column');
+  assert.ok(px > 300, 'right of the tree');
+  assert.ok(qy - py >= 16, 'stacked with gaps');
+  assert.ok(out.some((e) => e.className === 'eyebrow' && e.textContent === 'UNGROUPED'));
 });
