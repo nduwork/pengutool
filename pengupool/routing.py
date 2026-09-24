@@ -29,10 +29,10 @@ class Tree:
 
 def live_tree() -> Tree:
     groups = model.GROUPS
-    if groups.exists():  # fail closed: a torn/hand-broken groups.json must not read as "no groups"
+    if groups.exists():  # raise, not "no groups": the guard retries a torn groups.json
         json.loads(groups.read_text())
     roots, _, _ = model.snapshot(light=True)
-    if model.TORN:  # fail closed: a session file caught mid-write must not make its session vanish
+    if model.TORN:  # raise, not a vanished session: the guard retries a file caught mid-write
         raise RuntimeError(f"session file mid-write: {model.TORN[0]}")
     t = Tree({}, {}, {}, {})
 
@@ -189,22 +189,24 @@ def authorize_send(sender: str, recipient: str, t: Tree | None = None) -> tuple[
 
 
 def main() -> None:
-    """Claude Code `PreToolUse` hook for `SendMessage`. Crashes exit 2 (via the installed command), which
-    blocks the send: a managed session must never message past the guard because PenguPool broke."""
+    """Claude Code `PreToolUse` hook for `SendMessage`. It denies only a send it has checked and found
+    non-adjacent: when PenguPool can't read the tree (a file mid-write, a bug), it retries briefly and then
+    lets the message through, so a PenguPool fault never cuts sessions off from each other."""
     inp = json.loads(sys.stdin.read() or "{}")
     if inp.get("tool_name") != "SendMessage":
         return
     tool = inp.get("tool_input") if isinstance(inp.get("tool_input"), dict) else {}
     sender, to = str(inp.get("session_id", "")), str(tool.get("to") or tool.get("recipient") or "")
-    t = live_tree()
+    for attempt in range(3):
+        try:
+            t = live_tree()
+            break
+        except Exception as e:
+            if attempt == 2:
+                print(f"PenguPool routing guard skipped ({e}); the message was sent unchecked", file=sys.stderr)
+                return
+            time.sleep(0.1)
     ok, reason = authorize_send(sender, to, t)
-    if ok:
-        try:  # a ROUTE REQUIRED child is now messaged: the Stop audit has nothing to say
-            from .context import routed
-            for hit in resolve(t, sender, to):
-                routed(sender, hit)
-        except Exception:
-            pass
     if not ok:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                                  "permissionDecision": "deny", "permissionDecisionReason": reason}}))
@@ -213,6 +215,5 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        print(f"PenguPool routing guard failed ({e}); retry the message after PenguPool recovers", file=sys.stderr)
-        raise SystemExit(2)
+    except Exception as e:  # never block a message because the guard itself broke
+        print(f"PenguPool routing guard skipped ({e}); the message was sent unchecked", file=sys.stderr)

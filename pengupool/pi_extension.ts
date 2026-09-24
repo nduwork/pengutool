@@ -8,8 +8,8 @@
 //  - before each prompt, `pengupool ctl context <sid>` is appended to the system prompt: where this
 //    session sits in its PenguPool tree and who it may message with pi-intercom (plus any session the
 //    user @-tagged in that prompt)
-//  - every intercom send/ask goes through `pengupool ctl authorize` first; a non-adjacent target, or
-//    PenguPool failing to answer, blocks it (the same rule Claude's SendMessage guard applies)
+//  - every intercom send/ask goes through `pengupool ctl authorize` first; a non-adjacent target blocks it;
+//    PenguPool failing to answer does not (the same rule Claude's SendMessage guard applies)
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { execFile } from "node:child_process"
 import * as crypto from "node:crypto"
@@ -98,10 +98,8 @@ export default function (pi: ExtensionAPI) {
     if (event.toolName !== "intercom" || !["send", "ask"].includes(input.action) || !live.sessionId) return
     // A send by cwd alone names no session: authorize gets "" and refuses it for a grouped session.
     const r = await run(["ctl", "authorize", String(live.sessionId), String(input.to || "")])
-    if (r.code) {
-      return { block: true, reason: r.code === 3 ? r.err
-        : `PenguPool routing guard failed (${r.err || "no answer"}); retry the message after PenguPool recovers` }
-    }
+    // only a checked refusal (exit 3) blocks: a PenguPool fault or timeout never cuts sessions off
+    if (r.code === 3) return { block: true, reason: r.err }
   })
   const gone = () => { try { fs.unlinkSync(LIVE) } catch {} }
   pi.on("session_shutdown", async (event) => { if (event.reason === "quit") gone() })

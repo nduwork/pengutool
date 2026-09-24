@@ -209,7 +209,7 @@ def load_sessions(now: float | None = None) -> list[dict]:
         if not _session_file(d):
             d = _SESSION_CACHE.get(str(p))  # torn read: fall back to the last good parse
             if d is None:
-                try:  # still mid-write: callers that must fail closed (the routing guard) check TORN
+                try:  # still mid-write: callers that must not misread it (the routing guard) check TORN
                     if now - p.stat().st_mtime < 5:
                         TORN.append(str(p))
                 except OSError:

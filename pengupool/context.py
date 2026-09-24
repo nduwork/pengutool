@@ -40,22 +40,22 @@ TRIAGE_END = ("Split a mixed request into its parts; do not do work a child owns
               "Begin every reply with one line: `Triage: → <session>`, `Triage: mine` or `Triage: asked parent`.")
 DESCRIBE = ("pengupool ctl describe {me} --summary \"<one line: what you own>\" "
             "--responsibility \"<a short brief of your responsibility>\" --keywords \"<routing terms, comma-separated>\"")
-# A match found by code, not judgment: the hook compares the prompt with each child's routing terms and,
-# on a hit, names the child and the words that matched. The Stop hook then checks it was messaged.
-ROUTE = ("ROUTE REQUIRED: this request matches your child {who}. Your FIRST tool call must be {tool} to "
-         "{first}, delegating the part it owns; then do only what is yours. A stale child still queues the "
-         "message (send it and tell the user); \"role not set\", \"it is read-only\" and \"I can read the "
-         "files myself\" are not reasons to skip. Skip only if the user said to do it yourself or the match is "
-         "clearly wrong, and then say why in one line.")
+# A hint found by code: the hook compares the prompt with each child's routing terms and, on a hit, names
+# the child and the words that matched. Whether to route stays the session's call; nothing blocks on it.
+ROUTE = ("ROUTE CHECK: this request matches your child {who}. If it owns part of this, send it that part "
+         "with {tool} to {first} before doing yours; a stale child still queues the message. If the match is "
+         "wrong or the user said to do it yourself, say so in your Triage line.")
 ROLE_REQUIRED = ("ROLE REQUIRED: your role is not set, so other sessions cannot route work to you. Before anything "
                  "else this turn, run: {cmd} — base it on this request and your workspace; refine it later as "
                  "your work becomes clearer.")
 COMPACTED = ("You were just compacted: work carried over in the summary may belong to another session in the "
              "tree. Triage it again before resuming; do not treat it as yours because you remember it.")
-ROUTES = model.PENGU / "route-required"  # <sid>.json = {"targets": {sid: name}, "ts": epoch}, per prompt
-ROUTE_TTL = 3600
 SELF = re.compile(r"\b(?:do|handle|fix|check) (?:it|this|that)(?: all)? (?:by )?yourself\b|\bdon'?t (?:delegate|route)\b"
                   r"|\bno delegation\b", re.I)
+# a prompt the harness delivered for another session (its message, an idle notice, a subagent's report):
+# not the user's request, so it neither triggers a route check nor grants an @session line
+RELAYED = re.compile(r"\s*(?:Another Claude session sent a message:|\[Cross-session idle notice\]"
+                     r"|<(?:task-notification|cross-session-message|agent-message)\b)")
 STOPWORDS = frozenset("""about after again against because before being below between could doing during each
     every from have having here into itself just more most other over same should some such than that their
     them then there these they this those through under until very what when where which while will with
@@ -280,14 +280,12 @@ def text_for(sid: str, solo: bool = True, h: str = "cc", prompt: str | None = No
     `grant` (the caller proved the prompt is the user's)."""
     tagged = tag(sid, prompt) if prompt is not None and grant else []
     tree = load_tree() or {}
-    # ponytail: pi gets the ROUTE / ROLE directives but no end-of-turn audit (pi has no blocking Stop hook yet)
     ask, solo_ask = ask_role(tree, sid) if prompt is not None else (False, False)
     return render(tree, sid, solo or solo_ask, h, tagged, route_match(tree, sid, prompt or ""), ask)
 
 
 def ask_role(tree: dict, sid: str) -> tuple[bool, bool]:
-    """(ask, solo) for a prompt: a role-less grouped session is asked on every prompt (the Stop audit
-    backs it); a role-less solo session only on its first prompt, then left alone (nothing routes to it)."""
+    """(ask, solo) for a prompt: a role-less grouped session is asked on every prompt; a role-less solo session only on its first prompt, then left alone (nothing routes to it)."""
     if has_role(sid):
         return False, False
     m = (tree.get("sessions") or {}).get(sid) or {}
@@ -304,45 +302,6 @@ def ask_role(tree: dict, sid: str) -> tuple[bool, bool]:
     return True, True
 
 
-def _route_state(sid: str):
-    return ROUTES / f"{sid}.json" if re.fullmatch(r"[\w.-]{1,128}", sid) else None
-
-
-def routed(sender: str, target: str) -> None:
-    """The guard let `sender` message `target`: that route is done (routing.main calls this)."""
-    p = _route_state(sender)
-    d = model._json(p) if p else None
-    if isinstance(d, dict) and target in (d.get("targets") or {}):
-        d["targets"].pop(target)
-        if d["targets"] or d.get("role"):
-            model.write_json(p, d)
-        else:
-            p.unlink(missing_ok=True)
-
-
-def audit(sid: str, again: bool) -> str:
-    """Stop hook: the reason to keep going when a ROUTE REQUIRED child was never messaged this turn, or
-    a ROLE REQUIRED session still has no role ('' = fine). Blocks once per prompt; `again`
-    (stop_hook_active) never blocks a second time."""
-    p = _route_state(sid)
-    d = model._json(p) if p else None
-    if p:
-        p.unlink(missing_ok=True)
-    if again or not isinstance(d, dict) or time.time() - float(d.get("ts", 0)) > ROUTE_TTL:
-        return ""
-    why = []
-    names = [n for n in (d.get("targets") or {}).values()]
-    said = d.get("why") or {}   # the words that matched, so a wrong match is plain to see
-    if names:
-        named = ", ".join(f"{n} (matched: {', '.join(said[n])})" if said.get(n) else n for n in names)
-        why.append(f"routing skipped for {named}. This request matched that child, but it was never "
-                   f"messaged. Send it the part it owns now, or, if the user said to do it yourself or the match "
-                   f"is wrong, say so in one line and stop.")
-    if d.get("role") and not has_role(sid):
-        why.append("role not set. Describe yourself now with " + DESCRIBE.format(me=sid) + ", then stop.")
-    return " ".join(["PenguPool:", *why]) if why else ""
-
-
 def main() -> None:
     try:
         inp = json.loads(sys.stdin.read() or "{}")
@@ -354,8 +313,7 @@ def main() -> None:
         return
     # record the latest lifecycle event so the front-ends can show an accurate per-session state
     # (e.g. PermissionRequest -> "blocked"); a later event overwrites it. Never emit anything for
-    # tool/permission events — the hook must not influence Claude's approval flow. Stop may emit one
-    # "keep going" when a required route was skipped (audit).
+    # tool/permission events — the hook must not influence Claude's approval flow.
     try:
         model.write_json(model.AGENT_STATE / f"{sid}.json", {"event": event, "ts": int(time.time())})
     except OSError:
@@ -366,33 +324,18 @@ def main() -> None:
         with (model.PENGU / "registry.jsonl").open("a") as fh:
             fh.write(json.dumps({"sessionId": sid, "cwd": os.getcwd(), "tmuxPane": os.environ.get("TMUX_PANE", ""),
                                  "ts": int(time.time())}) + "\n")
-    if event == "Stop":
-        try:
-            reason = audit(sid, bool(inp.get("stop_hook_active")))
-        except Exception:
-            reason = ""  # the audit is advisory: never trap a session because PenguPool broke
-        if reason:
-            print(json.dumps({"decision": "block", "reason": reason}))
-        return
     if event not in ("SessionStart", "UserPromptSubmit"):
         return  # only these two inject the tree; other events just recorded state above
     # a solo session hears about its workspace and role once, at start, not on every prompt
     prompt = str(inp.get("prompt") or "") if event == "UserPromptSubmit" else ""
-    tagged = tag(sid, prompt) if event == "UserPromptSubmit" else []
+    relayed = bool(RELAYED.match(prompt))
+    if relayed:
+        prompt = ""
+    # a relayed prompt leaves the user's @session grant alone: a reply must not cut the line it came on
+    tagged = tag(sid, prompt) if event == "UserPromptSubmit" and not relayed else []
     tree = load_tree() or {}
     route = route_match(tree, sid, prompt)
     ask, solo_ask = ask_role(tree, sid) if event == "UserPromptSubmit" else (False, False)
-    if event == "UserPromptSubmit":
-        try:  # what the Stop audit checks this turn: the required routes, and a grouped session's role
-            p = _route_state(sid)
-            need_role = ask and not solo_ask
-            if p and (route or need_role):
-                model.write_json(p, {"targets": {c: n for c, n, _ in route}, "why": {n: t for _, n, t in route},
-                                     "role": need_role, "ts": time.time()})
-            elif p:
-                p.unlink(missing_ok=True)
-        except OSError:
-            pass
     text = render(tree, sid, solo=event == "SessionStart" or solo_ask, tagged=tagged, route=route, ask_role=ask)
     if text and event == "SessionStart" and inp.get("source") == "compact" and "Session tree" in text:
         text = text.replace("<pengupool>\n", "<pengupool>\n" + COMPACTED + "\n", 1)
