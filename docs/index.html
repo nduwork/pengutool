@@ -38,7 +38,7 @@
           <a class="button secondary" href="#tutorial">Watch the demo</a>
           <a class="button secondary" href="#guide">Read the guide</a>
         </div>
-        <p class="hero-note">Open source · MIT · macOS &amp; Linux · v0.1.0 · local only, no hosted account</p>
+        <p class="hero-note">Open source · MIT · macOS &amp; Linux · <a class="ver" href="https://github.com/nduwork/pengutool/releases/latest">latest release</a> · local only, no hosted account</p>
       </div>
     </section>
 
@@ -88,7 +88,7 @@
     <section class="features wrap" id="plugins">
       <div class="section-intro"><span class="eyebrow">THE PLUGINS</span><h2>One backend, three ways in.</h2><p>Each harness gets its own wiring. They all read the same local model under <code>~/.pengupool/</code>, and one tag ships a matching backend and extension.</p></div>
       <div class="feature-grid plugin-grid">
-        <article><div class="feature-icon">▣</div><h3>VS Code &amp; Cursor extension</h3><ul><li>Sessions and pi Sessions trees; drag a row to regroup</li><li>Live map with cards sized to their text and a <b>⟳ Refresh</b> button</li><li>Message log coloured by edge: parent → child, child → parent, <code>@session</code></li><li>One tmux-backed terminal per harness that switches sessions in place</li><li><kbd>Shift</kbd>+<kbd>R</kbd> Restart &amp; Resume after a Claude Code or pi update</li></ul></article>
+        <article><div class="feature-icon">▣</div><h3>VS Code &amp; Cursor extension</h3><ul><li>Sessions and pi Sessions trees; drag a row to regroup</li><li>Live map: lines light green when a parent messages a child and milky blue on the reply; ungrouped sessions stack in their own column</li><li>Top-down or left-right layout, compact or roomy spacing, and <b>⟳ Refresh</b></li><li>Message log coloured by edge: parent → child, child → parent, <code>@session</code></li><li>One tmux-backed terminal per harness that switches sessions in place</li><li><kbd>Shift</kbd>+<kbd>R</kbd> Restart &amp; Resume after a Claude Code or pi update</li></ul></article>
         <article><div class="feature-icon">⚓</div><h3>Claude Code hooks</h3><ul><li>A <code>&lt;pengupool&gt;</code> block each prompt: tree, parent, children, role</li><li><code>SendMessage</code> guard: parent and direct children only</li><li><code>ROUTE REQUIRED</code> when a prompt matches a child's keywords, checked again at Stop</li><li><code>ROLE REQUIRED</code> until the session describes itself</li></ul></article>
         <article><div class="feature-icon">π</div><h3>pi extension</h3><ul><li>The same tree block, appended to pi's system prompt</li><li>pi-intercom <code>send</code>/<code>ask</code> checked against the routing rule</li><li>Workflow chain in pi's footer and prompt</li><li>Its own tmux server; never grouped with Claude Code sessions</li></ul></article>
       </div>
@@ -129,5 +129,10 @@
     });
   </script>
   <script src="tutorial.js" defer></script>
+<script>
+  // the hero shows the live latest release, so the page never goes stale between releases
+  fetch('https://api.github.com/repos/nduwork/pengutool/releases/latest').then((r) => r.ok ? r.json() : null)
+    .then((j) => { const a = document.querySelector('.hero-note .ver'); if (j && j.tag_name && a) a.textContent = j.tag_name; }).catch(() => {});
+</script>
 </body>
 </html>

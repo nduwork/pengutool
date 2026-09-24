@@ -197,7 +197,7 @@
     { t: 'Install', p: 'One command installs the backend, the harness wiring and the editor extension.', run: async () => {
       await tab('zsh');
       await type('curl -fsSL https://pengupool.nduwork.com/install.sh | bash');
-      for (const l of ['Installing PenguPool v0.1.0', '✓ pengupool CLI 0.1.0', '✓ Claude Code hooks and SendMessage guard', '✓ pi extension · workflow tracker', '✓ Extension installed in Cursor'])
+      for (const l of ['Installing the latest PenguPool release', '✓ pengupool CLI', '✓ Claude Code hooks and SendMessage guard', '✓ pi extension · workflow tracker', '✓ Extension installed in Cursor'])
         await say(esc(l), l.startsWith('✓') ? 'ok' : 'dim', 330);
       await say('Done. Reload your editor window, then open the PenguPool view.', 'dim', 900);
     } },
