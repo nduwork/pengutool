@@ -193,8 +193,7 @@ def test_ctl_describe_parses_flags(home, monkeypatch, capsys):
     assert ctl.main(["describe", A]) == 2 and ctl.main(["describe", A, "--bogus", "x"]) == 2
 
 
-def test_code_matches_the_prompt_to_a_child_and_audits_the_route(home, monkeypatch):
-    monkeypatch.setattr(context, "ROUTES", home / "routes")
+def test_code_matches_the_prompt_to_a_child_and_hints_the_route(home, monkeypatch):
     monkeypatch.setattr(profiles, "parent_of", lambda sid: A if sid == B else "")
     profiles.describe(B, "Owns the parser", None, editor=B, keywords_text="lexer, token stream")
     tree = _sess()
@@ -205,40 +204,43 @@ def test_code_matches_the_prompt_to_a_child_and_audits_the_route(home, monkeypat
     assert context.route_match(tree, A, "fix the lexer, do it yourself") == []       # user opted out
     assert context.route_match(tree, B, "fix the lexer") == []                       # no children
     block = context.render(tree, A, route=hit)
-    assert block.startswith("<pengupool>\nROUTE REQUIRED: this request matches your child kid (matched: lexer")
+    assert block.startswith("<pengupool>\nROUTE CHECK: this request matches your child kid (matched: lexer")
     assert "Triage: mine" in block
+    assert "ROUTE CHECK: this request matches your child kid" in block and "FIRST tool call" not in block
 
-    state = context.ROUTES / f"{A}.json"
-    model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
-    assert "routing skipped for kid" in context.audit(A, again=False)                # never messaged
-    model.write_json(state, {"targets": {B: "kid"}, "why": {"kid": ["lexer"]}, "ts": __import__("time").time()})
-    assert "routing skipped for kid (matched: lexer)" in context.audit(A, again=False)  # says why
-    assert context.audit(A, again=False) == ""                                       # blocks once
-    model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
-    assert context.audit(A, again=True) == ""                                        # stop_hook_active
-    model.write_json(state, {"targets": {B: "kid"}, "ts": __import__("time").time()})
-    context.routed(A, B)                                                             # the guard saw the send
-    assert not state.exists() and context.audit(A, again=False) == ""
+
+def test_a_message_from_another_session_is_not_a_request_to_route(home, monkeypatch, capsys):
+    import io
+    import sys
+    monkeypatch.setattr(profiles, "parent_of", lambda sid: A if sid == B else "")
+    monkeypatch.setattr(context, "load_tree", _sess)
+    profiles.describe(A, "Leads", None, editor=A)
+    profiles.describe(B, "Owns the parser", None, editor=B, keywords_text="lexer")
+
+    def prompt(text):
+        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+            {"session_id": A, "hook_event_name": "UserPromptSubmit", "prompt": text})))
+        context.main()
+        return "ROUTE CHECK" in capsys.readouterr().out
+
+    # the child's reply, its idle notice and a subagent report all name the child, but the user asked nothing
+    assert not prompt('Another Claude session sent a message: <cross-session-message from-name="kid">lexer done')
+    assert not prompt('[Cross-session idle notice] "kid", which you asked to be notified about, is idle now')
+    assert not prompt("<task-notification> <task-id>x</task-id> the lexer report")
+    assert prompt("fix the lexer")                                                   # the user's own request
 
 
 def test_a_session_without_a_role_is_told_to_describe_itself_now(home, monkeypatch):
-    monkeypatch.setattr(context, "ROUTES", home / "routes")
     monkeypatch.setattr(profiles, "parent_of", lambda sid: A if sid == B else "")
     tree = _sess()
     profiles.register(B, str(home))
-    assert context.ask_role(tree, B) == (True, False)             # grouped: every prompt, backed by the audit
+    assert context.ask_role(tree, B) == (True, False)             # grouped: every prompt
     block = context.render(tree, B, ask_role=True)
     assert "ROLE REQUIRED" in block and f"ctl describe {B}" in block and "Once your task is clear" not in block
     parent = context.render(tree, A)
     assert f"Children without a role: kid (id {B})" in parent      # the parent can describe its child
 
-    state = context.ROUTES / f"{B}.json"
-    model.write_json(state, {"targets": {}, "role": True, "ts": __import__("time").time()})
-    context.routed(B, A)                                           # an unrelated send keeps the role check
-    assert "role not set" in context.audit(B, again=False)
-    model.write_json(state, {"targets": {}, "role": True, "ts": __import__("time").time()})
     profiles.describe(B, "Owns parsing", None, editor=B)
-    assert context.audit(B, again=False) == ""                    # described during the turn: fine
     assert context.ask_role(tree, B) == (False, False)
     assert "Children without a role" not in context.render(_sess(**{B: {**tree["sessions"][B], "summary": "Owns parsing"}}), A)
 
@@ -293,7 +295,6 @@ def test_socket_addresses_and_name_case_do_not_slip_past_the_guard():
 def test_a_prefix_the_parent_shares_with_its_child_is_not_a_match(home, monkeypatch):
     # parent "acme-shop-portal" in a worktree of acme-shop, child "acme-shop-site" in acme-shop itself:
     # "shop" or "acme-shop" is the parent's own repo, not the child; the child's own word ("site") still routes
-    monkeypatch.setattr(context, "ROUTES", home / "routes")
     tree = _sess(**{A: {"name": "acme-shop-portal", "repo": "acme-shop-wt-acme-shop-portal", "state": "active", "harness": "cc",
                         "parent": None, "children": [B], "workspace": "acme-shop-wt-acme-shop-portal", "summary": ""},
                     B: {"name": "acme-shop-site", "repo": "acme-shop", "state": "active", "harness": "cc",

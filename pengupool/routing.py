@@ -198,13 +198,6 @@ def main() -> None:
     sender, to = str(inp.get("session_id", "")), str(tool.get("to") or tool.get("recipient") or "")
     t = live_tree()
     ok, reason = authorize_send(sender, to, t)
-    if ok:
-        try:  # a ROUTE REQUIRED child is now messaged: the Stop audit has nothing to say
-            from .context import routed
-            for hit in resolve(t, sender, to):
-                routed(sender, hit)
-        except Exception:
-            pass
     if not ok:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                                  "permissionDecision": "deny", "permissionDecisionReason": reason}}))

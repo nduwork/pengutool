@@ -52,7 +52,7 @@ Report results back to <parent>, not to me.
 
 Sessions set their own role:
 
-- A session with no role is told `ROLE REQUIRED` and must describe itself before it does anything else:
+- A session with no role is told `ROLE REQUIRED` on each prompt until it describes itself:
   a one-line summary, a short responsibility and its routing keywords. Parents are shown which children
   still have no role.
 - Triage also matches a child's name, workspace and role words, so routing works even without keywords.
@@ -70,8 +70,8 @@ or miss the terms you actually use:
   ```
 
 Keywords drive triage. When your prompt to a parent matches a child's keywords, name, workspace or role,
-the parent is told `ROUTE REQUIRED` and must message that child first. If the turn ends without that
-message, the Stop hook sends it back once. Pick terms that belong to the child and not to its parent; a
+the parent is told `ROUTE CHECK`, with the words that matched, and routes the part that child owns. It is
+a hint, not a gate: a wrong match costs one line in the reply, never a blocked turn. Pick terms that belong to the child and not to its parent; a
 term that also describes the parent doesn't count.
 
 ### 3. Talk to the top, let triage route
