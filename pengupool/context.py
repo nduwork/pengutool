@@ -103,8 +103,8 @@ def _clean(s: str, n: int = 60) -> str:
 def load_tree() -> dict | None:
     try:
         d = json.loads(TREE.read_text())
-        if (isinstance(d, dict) and d.get("schema") == SCHEMA and time.time() - float(d.get("written", 0)) < FRESH_S
-                and not _changed_since(float(d["written"]))):
+        w = float(d.get("written", 0)) if isinstance(d, dict) else 0
+        if w and d.get("schema") == SCHEMA and time.time() - w < FRESH_S and not _changed_since(w):
             return d
     except (OSError, ValueError):
         pass
@@ -121,7 +121,8 @@ def load_tree() -> dict | None:
 
 
 def _changed_since(ts: float) -> bool:
-    """A regroup or a role change after the cache was written: rebuild now, not FRESH_S later."""
+    """A regroup or a role change after the cache was written: rebuild now, not FRESH_S later.
+    The profiles directory's mtime moves on every profile write because model.write_json renames into it."""
     for f in (model.GROUPS, profiles.PROFILES):
         try:
             if f.stat().st_mtime >= ts:
@@ -138,23 +139,22 @@ def org_change(tree: dict, sid: str) -> str:
     m = sess.get(sid) or {}
     now = {"parent": m.get("parent") if m.get("parent") in sess else None,
            "children": sorted(c for c in m.get("children", []) if c in sess)}
-    f = SEEN / f"{sid}.json"
-    try:
-        was = json.loads(f.read_text())
-    except (OSError, ValueError):
-        was = None
-    if was != now:
-        try:
-            model.write_json(f, now)
-        except OSError:
-            pass
-    if not isinstance(was, dict) or was == now:
+    if not model._SID.fullmatch(sid):  # sid is a path component
         return ""
-    nm = lambda s: _clean(sess[s]["name"]) if s in sess else "a closed session"
+    f = SEEN / f"{sid}.json"
+    was = model._json(f)
+    if was == now:
+        return ""
+    try:
+        model.write_json(f, now)
+    except OSError:
+        pass
+    if not isinstance(was, dict):
+        return ""
+    nm = lambda s: "none" if not s else _clean(sess[s]["name"]) if s in sess else "a closed session"
     what = []
     if was.get("parent") != now["parent"]:
-        what.append(f"parent: {nm(was['parent']) if was.get('parent') else 'none'} → "
-                    f"{nm(now['parent']) if now['parent'] else 'none'}")
+        what.append(f"parent: {nm(was.get('parent'))} → {nm(now['parent'])}")
     old = set(was.get("children") or [])
     if added := [nm(c) for c in now["children"] if c not in old]:
         what.append("children added: " + ", ".join(added))
@@ -389,11 +389,11 @@ def main() -> None:
     route = route_match(tree, sid, prompt)
     ask, solo_ask = ask_role(tree, sid) if event == "UserPromptSubmit" else (False, False)
     text = render(tree, sid, solo=event == "SessionStart" or solo_ask, tagged=tagged, route=route, ask_role=ask)
-    changed = org_change(tree, sid)
-    if text and changed and "Session tree" in text:
-        text = text.replace("<pengupool>\n", "<pengupool>\n" + changed + "\n", 1)
-    if text and event == "SessionStart" and inp.get("source") == "compact" and "Session tree" in text:
-        text = text.replace("<pengupool>\n", "<pengupool>\n" + COMPACTED + "\n", 1)
+    if text and "Session tree" in text:
+        pre = [line for line in (org_change(tree, sid),
+                                 COMPACTED if event == "SessionStart" and inp.get("source") == "compact" else "") if line]
+        if pre:
+            text = text.replace("<pengupool>\n", "<pengupool>\n" + "\n".join(pre) + "\n", 1)
     if text:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}))
 
