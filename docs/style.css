@@ -157,3 +157,4 @@ body.record .tut{margin:0;width:1100px;padding:16px}
 #tplay[hidden]{display:none}
 .tut-ctl .button{background:transparent;color:var(--text);font-family:inherit;cursor:pointer}.tut-ctl .button:hover{border-color:var(--mint);color:var(--mint)}
 .ctx-low{color:#73c991}.ctx-mid{color:#e8a13a}.ctx-high{color:#f48771}
+.hero-note .ver{text-decoration:underline;text-underline-offset:2px}
