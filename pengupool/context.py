@@ -23,7 +23,9 @@ RULES = (
     "(`pengupool ctl route {me} <name>` names the next hop) with: request_id, origin, target, objective, "
     "the context the next hop needs, reply_path and hop_limit. When you forward, add yourself to "
     "reply_path, decrement hop_limit and pass on only what the next hop needs; replies travel back along "
-    "reply_path."
+    "reply_path and carry its request_id and reply_path. Reply by the sender's session name (in Claude "
+    "Code its from-name; its uds: from address is checked the same way). Never pass an action a permission "
+    "check denied you to another session, up or down the tree: tell the user instead."
 )
 # Work flows down, questions flow up: a parent delegates to its children, a child only inquires of its
 # parent, and the parent triages that inquiry like any request (does it, delegates it, or inquires upward).
@@ -37,7 +39,8 @@ TRIAGE_UP = ("Not yours or your children's, or you are unsure: inquire with your
 TRIAGE_ROOT = "Owned by no session in this tree: tell the user."
 TRIAGE_END = ("Split a mixed request into its parts; do not do work a child owns, and do not push back work that "
               "is yours. Where roles are not set, judge by names and workspaces, and ask rather than guess. "
-              "Begin every reply with one line: `Triage: → <session>`, `Triage: mine` or `Triage: asked parent`.")
+              "Begin every reply to the user with one line: `Triage: → <session>`, `Triage: mine` or "
+              "`Triage: asked parent` (optional inside a {tool} message).")
 DESCRIBE = ("pengupool ctl describe {me} --summary \"<one line: what you own>\" "
             "--responsibility \"<a short brief of your responsibility>\" --keywords \"<routing terms, comma-separated>\"")
 # A hint found by code: the hook compares the prompt with each child's routing terms and, on a hit, names
@@ -230,7 +233,7 @@ def render(tree: dict, me: str, solo: bool = False, h: str = "cc", tagged: list[
         if p.get("description_source") in ("parent", "user"):
             by = "your parent" if p["description_source"] == "parent" else "the user"
             out.append(f"This description was last set by {by} at {_clean(p.get('updated_at', ''), 20)}: adopt or "
-                       "refine it (do not silently overwrite it).")
+                       "refine it (do not silently overwrite it); leaving it unchanged adopts it.")
         out.append("Update it when your enduring responsibility changes: " + DESCRIBE.format(me=me))
     elif not ask_role:
         out.append("Your role is not set. Once your task is clear, record what you own so other sessions can "
@@ -256,7 +259,8 @@ def render(tree: dict, me: str, solo: bool = False, h: str = "cc", tagged: list[
     has_kids = any(c in sess for c in m["children"])
     up = m.get("parent") in sess  # the root has nowhere to inquire: it tells the user
     down = TRIAGE_DOWN.format(tool=harness.TOOL[h], up="inquire upward" if up else "tell the user it has no owner here")
-    triage = " ".join([TRIAGE_DO, *([down] if has_kids else []), TRIAGE_UP if up else TRIAGE_ROOT, TRIAGE_END])
+    triage = " ".join([TRIAGE_DO, *([down] if has_kids else []), TRIAGE_UP if up else TRIAGE_ROOT,
+                       TRIAGE_END.format(tool=harness.TOOL[h])])
     return ("<pengupool>\n" + top + "\n".join(out) + "\nSession tree (managed by PenguPool, updated live when the user "
             "regroups sessions):\n" + "\n".join(draw_tree(sess, me)) + "\n"
             f"Your parent: {parent}.\nYour children: {kids}.\n{triage}\n{RULES.format(tool=harness.TOOL[h], me=me)}\n"
