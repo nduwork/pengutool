@@ -1,6 +1,7 @@
 // Animated tutorial: plays docs/tutorial-script.md scene by scene on the editor mock (#stage).
 // Every scene is a script of small steps over one state model; jumping to a scene fast-forwards the
-// earlier ones. ?record=N plays scene N alone, for rendering docs/assets/tutorial/*.gif.
+// earlier ones (and the setup: install and adding the agents). ?record=N plays scene N alone, for rendering
+// docs/assets/tutorial/*.gif.
 (() => {
   const tut = document.getElementById('tut');
   if (!tut) return;
@@ -216,7 +217,9 @@
     await add({ name, id: name, h: harness, ...s });
   };
   // The cast: `lead` runs in the monorepo that manages the apps; each child owns one app in its own repo.
-  const SCENES = [
+  // Install and adding the agents happen before the demo: they always run fast-forwarded as setup,
+  // so the player opens on a team whose agents exist but are not yet grouped.
+  const SETUP = [
     { t: 'Install', p: 'One command installs the backend, the harness wiring and the editor extension.', run: async () => {
       await tab('zsh');
       await type('curl -fsSL https://pengupool.nduwork.com/install.sh | bash');
@@ -235,6 +238,8 @@
       await newSession('docs-writer', '~/code/shop', 'folder', 'pi', { repo: 'shop', state: 'waiting', ctx: 2 });
       S.sel = 'lead'; render(); hidePtr();
     } },
+  ];
+  const SCENES = [
     { t: 'Group the children', p: 'Drag each app session onto the monorepo lead; payments stays on its own. The map becomes the tree every session sees.', run: async () => {
       await drag('api', 'lead'); await drag('web', 'lead'); await drag('deploy', 'lead');
       S.sel = 'lead'; render(); hidePtr(); await wait(600);
@@ -312,7 +317,7 @@
   }
   function resetTo(i) { // state at the start of scene i
     S = fresh(); seen.clear(); $('.cards').innerHTML = ''; clock = 14 * 3600 + 2 * 60 + 5;
-    FF = true; const chainRuns = SCENES.slice(0, i).reduce((p, s) => p.then(s.run), Promise.resolve());
+    FF = true; const chainRuns = SETUP.concat(SCENES.slice(0, i)).reduce((p, s) => p.then(s.run), Promise.resolve());
     return chainRuns.then(() => { FF = false; stage.querySelectorAll('.fade').forEach((e) => e.classList.remove('fade')); seen.clear(); render(); stage.querySelectorAll('.fade').forEach((e) => e.classList.remove('fade')); });
   }
   function halt() { // stop the timeline and clear anything a scene left mid-animation
@@ -346,7 +351,7 @@
   if (REDUCED) playBtn.hidden = true;
 
   if (RECORD) { document.body.classList.add('record'); start(RECORD - 1, false); return; }
-  S = fresh(); render(); caption(0);
+  resetTo(0).then(() => caption(0));
   if (REDUCED) { start(0, false); return; }
   new IntersectionObserver((es) => {
     const v = es[0].isIntersecting;
