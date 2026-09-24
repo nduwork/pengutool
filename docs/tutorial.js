@@ -36,6 +36,17 @@
     h += '<div class="side-sec closed">› SHORTCUTS</div>';
     $('.ide-side').innerHTML = h;
   }
+  // a path through right-angle points with each bend rounded (r=6), as extension/src/mapPanel.ts does
+  function rounded(pts) {
+    const toward = (a, b, r) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [a[0] + (b[0] - a[0]) * r / d, a[1] + (b[1] - a[1]) * r / d]; };
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [p, c, n] = [pts[i - 1], pts[i], pts[i + 1]];
+      const r = Math.min(6, Math.hypot(c[0] - p[0], c[1] - p[1]) / 2, Math.hypot(n[0] - c[0], n[1] - c[1]) / 2);
+      const a = toward(c, p, r), b = toward(c, n, r); d += ` L${a[0]},${a[1]} Q${c[0]},${c[1]} ${b[0]},${b[1]}`;
+    }
+    const e = pts[pts.length - 1]; return d + ` L${e[0]},${e[1]}`;
+  }
   function layout() {
     // as the real map: once a tree exists, sessions outside every tree stack in a column on the right
     const all = S.sessions.filter((s) => s.h === 'cc' && !s.parent), grouped = all.some((r) => kids(r.id).length);
@@ -67,23 +78,30 @@
       el.classList.toggle('col', !!p.col);
       const chain = !s.parent && kids(s.id).length && S.chain ? `<div class="ch">${esc(S.chain)}</div>` : '';
       el.innerHTML = `<div class="st">${lead ? '<span class="chip">LEAD</span>' : ''}${GLYPH[s.state]} ${LABEL[s.state]}</div><div class="nm">${esc(s.name)}</div>`
-        + `<div class="meta">${esc(s.repo)} · <span class="${ctxLevel(s.ctx)}">${s.ctx}%</span></div>${chain}`;
+        + `<div class="meta"><span class="${ctxLevel(s.ctx)}">${s.ctx}%</span> · ${esc(s.repo)}</div>${chain}`;
     }
-    // tree lines; the last two messages light theirs as the real map does: green down, milky blue for a reply
+    // the ungrouped column: left-aligned, the same 16px gap between cards whatever their heights
+    let top = 50;
+    pane.querySelectorAll('.card.col').forEach((c) => { c.style.top = top + 'px'; top += c.offsetHeight + 16; });
+    $('.ucol').hidden = !pane.querySelector('.card.col');
+    // Tree lines drawn as the real map draws them, in pixels from the cards' target boxes: down from the
+    // parent to a bus 16px below it, along the bus, down into the child, bends rounded (r=6). The last two
+    // messages light their line as the real map does: green down, milky blue for a reply.
+    const W = pane.offsetWidth, Hh = pane.offsetHeight, box = (id) => { const p = pos[id], c = pane.querySelector(`[data-id="${id}"]`);
+      const x = p.x / 100 * W, y = p.y / 100 * Hh; return { x, top: y, bottom: y + (c ? c.offsetHeight : 0) }; };
     const lit = { lg: '', lb: '' }, recent = S.logs.slice(-2);
     let d = '';
     for (const s of S.sessions.filter((x) => x.h === 'cc' && x.parent)) {
-      const a = pos[s.parent], b = pos[s.id]; if (!a || !b) continue;
-      const seg = `M${a.x} ${a.y + 28} V51 H${b.x} V${b.y} `; d += seg;
+      if (!pos[s.parent] || !pos[s.id]) continue;
+      const a = box(s.parent), b = box(s.id), bus = a.bottom + 16;
+      const seg = rounded([[a.x, a.bottom], [a.x, bus], [b.x, bus], [b.x, b.top]]) + ' '; d += seg;
       const m = recent.filter((l) => (l.src === s.parent && l.dst === s.id) || (l.src === s.id && l.dst === s.parent)).pop();
       if (m) lit[m.src === s.parent ? 'lg' : 'lb'] += seg;
     }
+    const svg = $('.edges'); svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
     $('.edges path').setAttribute('d', d);
     $('.edges path.g').setAttribute('d', lit.lg); $('.edges path.b').setAttribute('d', lit.lb);
-    // the ungrouped column: left-aligned, the same 12px gap between cards whatever their heights
-    let top = 50;
-    pane.querySelectorAll('.card.col').forEach((c) => { c.style.top = top + 'px'; top += c.offsetHeight + 12; });
-    $('.ucol').hidden = !pane.querySelector('.card.col');
+    $('.map-legend').hidden = !S.sessions.some((x) => x.h === 'cc');
     const empty = !S.sessions.some((x) => x.h === 'cc');
     $('.map-empty').hidden = !empty;
   }
@@ -95,9 +113,14 @@
   }
   function renderTerm() {
     $('.term-name').textContent = '⌨ ' + S.tab;
-    $('.term').innerHTML = S.term.slice(-6).map((l) => `<div class="${l.cls || ''}">${l.html}</div>`).join('')
-      + (S.tab === 'zsh' ? '' : '<div class="box"><span class="you">&gt;</span> <span class="cursor"></span></div>');
+    // Claude Code's own status line sits under the prompt: model | context | branch | repo, then the chain
+    const me = S.sessions.find((s) => s.name === S.tab);
+    const status = me ? `<div class="sl">Opus | <span class="${ctxLevel(me.ctx)}">${me.ctx}%</span> | main | ${esc(me.repo)}</div>`
+      + (S.chain ? `<div class="sl">${esc(S.chain)}</div>` : '') : '';
+    $('.term').innerHTML = S.term.slice(-5).map((l) => `<div class="${l.cls || ''}">${l.html}</div>`).join('')
+      + (S.tab === 'zsh' ? '' : '<div class="box"><span class="you">&gt;</span> <span class="cursor"></span></div>' + status);
   }
+  addEventListener('resize', () => renderMap());
   function render() { renderSide(); renderMap(); renderLog(); renderTerm(); $('.ide-status .chain').textContent = S.chain; }
 
   // ---- playback primitives -------------------------------------------------------------------------
