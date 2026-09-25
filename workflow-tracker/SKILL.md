@@ -119,6 +119,34 @@ STEPS done fetch ; STEPS done check ; STEPS done report   # body done, terminal 
 - `↻N` appears only once looping starts; a fresh `set` drops it back to pass 1.
 - The body should be a contiguous run (it brackets from the first to the last body step).
 
+### Ordering guards (`assert`, `STEP_STATUS_STRICT_ORDER`)
+
+The tracker records what you *mark* — it never infers it, so a stale chain can drift silently:
+marking a later phase done before an earlier one is otherwise allowed. Two opt-in guards catch this.
+
+- **`STEPS assert <step>`** — an on-demand gate a phase script or skill can call before doing work.
+  It exits nonzero unless **every step before `<step>` is done**, i.e. the workflow has genuinely
+  reached that phase:
+  ```bash
+  STEPS assert build       # exit 2 if an earlier step isn't done (jumping ahead is caught)
+  STEPS assert publish     # call before the release step; fails until prior phases are done
+  ```
+  This turns "I should be done with X first" from a hope into a check no agent can silently skip.
+- **`STEP_STATUS_STRICT_ORDER=1`** — when set in the environment, `STEPS done <step>` / `STEPS fail <step>`
+  **refuse to finish a step out of order** (exit 3) while an earlier step isn't done. Opt-in per run,
+  so the default behavior is unchanged:
+  ```bash
+  STEP_STATUS_STRICT_ORDER=1 STEPS done upload   # blocked until prior steps are done
+  ```
+  It ships OFF by default to stay backward compatible. Both guards are covered by `--selfcheck`.
+
+**Working rule (a commit must not silently outrun the chain):** when a phase's work is committed, run
+`STEPS done <phase>` (or at least `STEPS start <phase>`) in the same turn you quote the chain; if a
+commit message names a phase, the chain is expected to transition to it in that reply. Teams that want
+hard enforcement can install a **warn-only** pre-commit hook that runs `STEPS assert <next>` and echoes
+a warning on failure; promote it to a hard gate with `WT_STRICT=1` only where the team opts in. The
+hook is advisory by default so it never blocks an unrelated commit.
+
 Rules:
 - One `set` per workflow. Re-running `set` restarts the chain (and clears any `↻` counter).
 - `done X` activates the next *planned* step, so you rarely need `start` unless you
