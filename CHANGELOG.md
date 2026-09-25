@@ -5,11 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
 ### Added
 - A **clear** button on the message log (and `pengupool ctl clear-logs`) wipes the cross-session
   message log. The wipe is durable — a per-transcript watermark in `~/.pengupool/cleared.json` — so
   cleared history stays gone across `serve` and restarts; only new messages reappear.
 
+- Editor extension: 0.3.0 (install both with `install.sh`; they ship together in this tag).
 ## [0.3.4] - 2026-09-24
 
 ### Fixed
