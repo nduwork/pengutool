@@ -31,6 +31,7 @@ Verbs:
     tree <sid>                    the full session tree around a session, with summaries
     route <sid> <target>          the next adjacent hop from a session toward a target (name or id)
     authorize <sid> <recipient>   exit 0 when the session may message the recipient; else the reason, exit 3
+    clear-logs                    wipe the cross-session message log (durable, shared with serve)
 """
 from __future__ import annotations
 
@@ -354,13 +355,19 @@ def _authorize(sid: str, recipient: str) -> int:
     return 0 if ok else 3
 
 
+def _clear_logs() -> int:
+    """Empty the cross-session message log (durable, shared with serve and the pi extension)."""
+    model.clear_logs()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[2:] if argv is None else argv)  # drop "pengupool ctl"
     json_output = argv[:1] == ["--json"]
     if json_output:
         argv.pop(0)
     if not argv:
-        print("usage: pengupool ctl new|resume|restart|adopt|attach|close|group|worktree-add|past|context|describe|profile|tree|route|authorize …", file=sys.stderr)
+        print("usage: pengupool ctl new|resume|restart|adopt|attach|close|group|worktree-add|past|context|describe|profile|tree|route|authorize|clear-logs …", file=sys.stderr)
         return 2
     verb, a = argv[0], argv[1:]
     if verb == "describe" and a:
@@ -393,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
         ("tree", 1): lambda: _tree(a[0]),
         ("route", 2): lambda: _route(a[0], a[1]),
         ("authorize", 2): lambda: _authorize(a[0], a[1]),
+        ("clear-logs", 0): _clear_logs,
     }
     fn = table.get((verb, len(a)))
     if not fn:

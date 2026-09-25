@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 function loadPanel(sourceName) {
-  const posts = [], commands = [];
+  const posts = [], commands = [], ctl = [];
   let receive;
   const webview = {
     cspSource: 'vscode-resource:',
@@ -51,13 +51,16 @@ function loadPanel(sourceName) {
         CTX_LEVEL_JS: load('sessionState').CTX_LEVEL_JS,   // the real level rule, so tests check it
         CTX_LEVEL_CSS: '',
       };
+      if (id === './util') return {
+        runCtl: async (args) => { ctl.push(args); return { code: 0, stdout: '', stderr: '' }; },
+      };
       throw new Error('Unexpected dependency: ' + id);
   };
   const exports = load(sourceName);
   const data = () => posts.filter((message) => message?.type !== 'tabs' && message?.type !== 'selection');
   return {
     data, tabs: () => posts.filter((message) => message?.type === 'tabs'),
-    exports, posts, commands,
+    exports, posts, commands, ctl,
     html: () => webview.html,
     send: (message) => receive(message),
     ready: () => receive({ type: 'ready' }),
@@ -123,6 +126,19 @@ test('log rows preview one line and expand on click', () => {
   assert.match(html, /\.row\.open \.msg \{ white-space:pre-wrap/); // expand to full
   assert.match(html, /addEventListener\('click'/);       // click toggles expansion
   assert.match(html, /dataset\.k/);                     // open-state keyed per message
+});
+
+test('log clear button posts a clear and calls the backend clear-logs verb', () => {
+  const h = loadPanel('logPanel');
+  h.exports.LogPanel.show(snapshot, 1);
+  assert.match(h.html(), /id="clear"/, 'renders a clear button');
+  assert.match(h.html(), /postMessage\(\{type:'clear'\}\)/, 'wired to post to the extension');
+  h.send({ type: 'clear' });
+  // args come from the sandboxed webview realm, so compare primitives (cross-realm arrays are not
+  // deepEqual across Node realms).
+  assert.equal(h.ctl.length, 1);
+  assert.equal(h.ctl[0].length, 1);
+  assert.equal(h.ctl[0][0], 'clear-logs');
 });
 
 test('map session names use the editor theme foreground', () => {

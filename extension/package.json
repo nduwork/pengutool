@@ -2,7 +2,7 @@
   "name": "pengupool",
   "displayName": "PenguPool",
   "description": "Manage Claude Code and pi sessions with a shared tmux terminal, session tree, live map, and message log. Requires the PenguPool CLI.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "nduwork",
   "license": "MIT",
   "homepage": "https://pengupool.nduwork.com",

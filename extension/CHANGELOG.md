@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Added a **clear** button to the message log panel that wipes the cross-session message log
+  (via `pengupool ctl clear-logs`); the wipe is durable across restarts — only new messages return.
+
+Ships with PenguPool v0.4.0.
+
 ## 0.2.1
 
 - context use from 30% to 60% is yellow, between the green and the red (was the theme's orange)
