@@ -5,3 +5,9 @@ __pycache__/
 .step-status/
 .DS_Store
 dist/
+
+# Per-user pi session scaffold (agent settings + quiet-tools artifacts). The extension writes full
+# read/bash/subagent output to .pi/quiet-tools/ before compacting it — that can hold credentials and
+# must never be committed. Ignore the whole scaffold so a routine `git add -A` can't leak it.
+.env
+.pi/
