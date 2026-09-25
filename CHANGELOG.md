@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-24
+
+### Fixed
+- ignore per-user pi session scaffold (.env, .pi/) (#30)
+- harden against silent phase drift (assert + strict order) (#29)
 ## [0.4.0] - 2026-09-24
 
 ### Added
