@@ -2,6 +2,10 @@
 
 **See your agent sessions in one place.** PenguPool is a VS Code/Cursor extension, backed by a local Python CLI, for managing Claude Code and pi sessions. It shows the session tree, a live map of who is talking to whom, recent messages, and a tmux-backed terminal per harness. Sessions run in tmux and keep running when you close the editor.
 
+## Tutorial
+
+Watch [PenguPool Tutorial: Build an AI Agent Team Across Repos with pi](https://www.youtube.com/watch?v=CogDOQckpGU&t=31s) — a full demo of grouping a director with workers, routing work down the tree, and following every handoff in the map and log.
+
 ## Install
 
 One command installs the latest release: the `pengupool` CLI, the wiring for every installed harness (Claude Code, pi), the workflow tracker, and the extension in every VS Code and Cursor it finds.
