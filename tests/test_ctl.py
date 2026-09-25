@@ -270,6 +270,13 @@ def test_resume_rejects_an_id_that_would_read_as_a_flag(capsys):
     assert "invalid session id" in capsys.readouterr().err
 
 
+def test_clear_logs_verb(tmp_path, monkeypatch):
+    monkeypatch.setattr(model, "CLEARED", tmp_path / "cleared.json")
+    monkeypatch.setattr(model, "load_sessions", lambda *a, **k: [])
+    assert ctl.main(["clear-logs"]) == 0
+    assert (tmp_path / "cleared.json").exists()   # durable watermark written even with no live sessions
+
+
 def test_slash_types_into_the_sessions_own_pane_and_only_for_the_user(monkeypatch, capsys):
     from pengupool import tmux
     typed = []

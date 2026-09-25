@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SessionNode, Snapshot } from './serveClient';
 import { HarnessTabs, HARNESS_TABS_CSS, HARNESS_TABS_HTML, HARNESS_TABS_JS } from './harness';
+import { runCtl } from './util';
 
 /** Format an ISO timestamp in the machine's local timezone for the compact log display. */
 export function localLogTime(value: string): string {
@@ -90,8 +91,17 @@ export class LogPanel {
     this.panel.webview.onDidReceiveMessage((message) => {
       if (message?.type === 'ready') { this.render(); }
       if (message?.type === 'tab' && this.tabs.pick(message.harness)) { this.render(); }
+      if (message?.type === 'clear') { void this.clearLog(); }
     });
     this.panel.onDidDispose(() => { if (LogPanel.current === this) { LogPanel.current = undefined; } });
+  }
+
+  /** Wipe the cross-session message log via the backend; the next polled snapshot is empty. */
+  private async clearLog(): Promise<void> {
+    const { code, stderr } = await runCtl(['clear-logs']);
+    if (code !== 0) {
+      void vscode.window.showErrorMessage(`clear log failed: ${stderr || code}`);
+    }
   }
 
   update(snap: Snapshot): void {
@@ -130,19 +140,28 @@ export class LogPanel {
   .who { color:#3fb950; } .who.b { color:#9ecbff; } .who.o { color:#f0883e; } .who.n { color: var(--vscode-descriptionForeground); }
   .g { color:#3fb950; } .b { color:#9ecbff; } .o { color:#f0883e; }
   .legend { position:sticky; top:-8px; z-index:1; margin:-8px -8px 6px; padding:6px 8px;
+            padding-right:64px;
             border-bottom:1px solid var(--vscode-panel-border); background:var(--vscode-editor-background);
             color:var(--vscode-descriptionForeground); }
   .legend span + span { margin-left:14px; }
   #empty { color: var(--vscode-descriptionForeground); }
+  #clear { position:absolute; top:4px; right:8px; z-index:2; background:transparent;
+            color:var(--vscode-foreground); border:1px solid var(--vscode-panel-border);
+            border-radius:3px; cursor:pointer; padding:1px 8px; font-size:11px;
+            font-family:var(--vscode-editor-font-family, monospace);}
+  #clear:hover { background:var(--vscode-list-hoverBackground); }
+  #clear:active { opacity:.7; }
   ${HARNESS_TABS_CSS}
   .legend #tabs { margin:-6px -8px 6px; }
 </style></head><body>
-<div class="legend">${HARNESS_TABS_HTML}<span class="g">parent → child</span><span class="b">child → parent</span><span class="o">@session (user-tagged)</span></div>
+<div class="legend">${HARNESS_TABS_HTML}<span class="g">parent → child</span><span class="b">child → parent</span><span class="o">@session (user-tagged)</span>
+  <button id="clear" type="button" title="Remove all messages from the log (durable — only new messages return)">clear</button></div>
 <div id="empty">no messages yet</div><div id="log"></div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const log = document.getElementById('log'); const empty = document.getElementById('empty');
   const open = new Set();   // message keys kept expanded across live refreshes
+  document.getElementById('clear').addEventListener('click', () => vscode.postMessage({type:'clear'}));
   log.addEventListener('click', ev => {
     const row = ev.target.closest('.row'); if(!row) return;
     const k = row.dataset.k;

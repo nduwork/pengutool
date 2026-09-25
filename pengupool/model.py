@@ -19,6 +19,9 @@ PENGU = Path(os.environ.get("PENGUPOOL_HOME", Path.home() / ".pengupool"))
 # live-session files per harness; the pi extension writes Claude-shaped files into PI_LIVE
 PI_LIVE = PENGU / "pi-sessions"
 STALE_S = 600
+# "clear logs": per-transcript byte watermark the moment the log was cleared, so already-seen
+# cross-session messages never re-emerge (durable, shared by the TUI-less backend and `serve`).
+CLEARED = PENGU / "cleared.json"
 MSG_LABEL_MAX = 4000  # retained message text so the log/webview can show full details (never cropped)
 SYM = {"done": "✓", "active": "●", "failed": "✗"}
 
@@ -629,6 +632,11 @@ class Transcripts:
         self._sock_seen: dict[Path, float] = {}
         self._by_sock: dict[str, str] = {}
         self.chains: dict[str, str] = {}  # sessionId -> tracker chain it last switched to
+        self.cleared: dict[Path, int] = self._load_cleared()
+        try:
+            self._cleared_mtime = CLEARED.stat().st_mtime
+        except OSError:
+            self._cleared_mtime = 0.0
 
     def socket_names(self) -> dict[str, str]:
         """'uds:<socket>' -> session name, from every session file (dead ones keep their name)."""
@@ -650,9 +658,71 @@ class Transcripts:
             return Path(s["sessionFile"])
         return transcript(s["sessionId"], s["cwd"], harness.of(s))
 
+    def _load_cleared(self) -> dict[Path, int]:
+        """Per-transcript byte watermark recorded at "clear logs", from CLEARED."""
+        d = _json(CLEARED)
+        out: dict[Path, int] = {}
+        if isinstance(d, dict):
+            for path, off in d.items():
+                if isinstance(off, int) and not isinstance(off, bool) and off > 0:
+                    try:
+                        out[Path(path)] = off
+                    except Exception:
+                        pass
+        return out
+
+    def _save_cleared(self) -> None:
+        try:
+            write_json(CLEARED, {str(p): n for p, n in self.cleared.items() if n > 0})
+        except OSError:
+            pass
+
+    def _reload_cleared(self) -> None:
+        """Pick up a clear issued by another process (map pane, `serve`, `ctl`) without a restart."""
+        try:
+            mtime = CLEARED.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        if mtime == self._cleared_mtime:
+            return
+        before = set(self.cleared.items())
+        self._cleared_mtime = mtime
+        self.cleared = self._load_cleared()
+        # A "clear logs" happened in another process: drop everything already collected and jump each
+        # transcript's offset to its watermark so no wiped history re-emerges in this process either.
+        if set(self.cleared.items()) != before:
+            self.msgs = []
+            for p, off in self.cleared.items():
+                self.offsets[p] = off
+
+    def clear(self) -> None:
+        """Drop tracked messages and watermark every live session transcript at its current end, so the
+        cleared history stays gone (durable via CLEARED, honoured across processes and restarts, from
+        the list pane or any fresh `serve` / `ctl` process)."""
+        paths = set(self.offsets)
+        for s in load_sessions():
+            p = self.path(s)
+            if p is not None:
+                paths.add(p)
+        for p in paths:
+            if p is None:
+                continue
+            try:
+                size = p.stat().st_size
+            except OSError:
+                self.offsets.pop(p, None)
+                self.cleared.pop(p, None)
+                continue
+            self.offsets[p] = size      # this process: nothing left to tail
+            self.cleared[p] = size      # durable: skip up to here on any fresh scan
+        self.msgs = []
+        self._save_cleared()
+        self._cleared_mtime = CLEARED.stat().st_mtime if CLEARED.exists() else 0.0
+
     def scan(self, sessions: list[dict]) -> list[Msg]:
         # incoming envelopes name the sender by socket: `from="uds:/tmp/cc-socks/<pid>.sock"`
         by_sock = self.socket_names()  # includes sessions that have since exited
+        self._reload_cleared()
         live = {s["name"] for s in sessions}
         seen = {(m.ts, m.src, m.dst, m.label) for m in self.msgs}
         for s in sessions:
@@ -666,18 +736,28 @@ class Transcripts:
             start = self.offsets.get(p)
             if start is None:  # first sight: only the tail, and skip the partial first line
                 start = max(0, size - self.tail_bytes)
+            cleared = self.cleared.get(p)
+            if cleared is not None:
+                start = max(start, cleared)   # never re-read history wiped by "clear logs"
             if size < start:  # truncated/rewritten
                 start = 0
+                self.cleared.pop(p, None)
             if size == start:
                 continue
             try:
                 with p.open("rb") as fh:
                     fh.seek(start)
                     chunk = fh.read(size - start)
+                    # First sight of a file can begin mid-line (tail_bytes cut, or a durable clear
+                    # watermark). Skip a partial opening line — but only when we're actually mid-line,
+                    # not already at a line boundary (a clear watermark lands exactly there), so a
+                    # real message right after a clear is never dropped.
+                    if start and p not in self.offsets:
+                        fh.seek(start - 1)
+                        if fh.read(1) != b"\n":
+                            chunk = chunk.split(b"\n", 1)[-1]
             except OSError:
                 continue
-            if start and p not in self.offsets:
-                chunk = chunk.split(b"\n", 1)[-1]
             last_nl = chunk.rfind(b"\n")
             if last_nl < 0:
                 continue  # line still being written
@@ -700,6 +780,15 @@ class Transcripts:
 
 
 TRANSCRIPTS = Transcripts()
+
+
+def clear_logs() -> None:
+    """Empty the cross-session message log and watermark transcripts so cleared history stays gone.
+
+    Durable (writes ~/.pengupool/cleared.json) — `serve`, the pi extension and any fresh `ctl` all
+    stop showing the wiped history even across process restarts; only messages sent *after* the clear
+    are logged again."""
+    TRANSCRIPTS.clear()
 
 
 def message_edges_from_msgs(msgs: list[Msg], live: set[str]) -> list[Edge]:

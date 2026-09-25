@@ -1,6 +1,6 @@
 [project]
 name = "pengupool"
-version = "0.3.4"
+version = "0.4.0"
 description = "Backend for the PenguPool editor extension: manage collaborating Claude Code and pi sessions"
 requires-python = ">=3.11"
 dependencies = []
