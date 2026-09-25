@@ -79,3 +79,41 @@ def test_clear_from_fresh_process_drops_collected_messages(tmp_path, monkeypatch
     assert server.scan(sessions) == []
     _send(path, ts="2000-01-01T00:00:05Z", label="new")
     assert [m.label for m in server.scan(sessions)] == ["new"]
+
+
+def test_clear_with_no_live_session_still_drops_collected_orphans(tmp_path, monkeypatch):
+    """A session the user ungrouped/closed leaves grey orphan lines in a running scanner. With no
+    live session left to watermark, cleared.json is unchanged, so the clear must still empty the
+    scanner's already-collected history."""
+    path = _setup(tmp_path, monkeypatch)
+    sessions = [{"sessionId": "root-id", "cwd": "/repo", "name": "root", "harness": "cc"}]
+    _send(path)
+
+    server = model.Transcripts(tail_bytes=1_048_576)
+    assert [m.label for m in server.scan(sessions)] == ["hello"]
+
+    monkeypatch.setattr(model, "load_sessions", lambda *a, **k: [])  # the session is gone
+    fresh = model.Transcripts()
+    fresh.clear()
+
+    assert server.scan([]) == []                 # the grey orphan must not survive the clear
+
+
+def test_clear_signal_drops_messages_even_when_watermarks_are_identical(tmp_path, monkeypatch):
+    """A later clear that produces the same watermark set (e.g. no new lines, no live session to add)
+    must still empty a running scanner — otherwise clearing twice does nothing the second time."""
+    path = _setup(tmp_path, monkeypatch)
+    sessions = [{"sessionId": "root-id", "cwd": "/repo", "name": "root", "harness": "cc"}]
+
+    _send(path, label="first")
+    server = model.Transcripts(tail_bytes=1_048_576)
+    assert [m.label for m in server.scan(sessions)] == ["first"]
+    server.clear()
+    _send(path, ts="2000-01-01T00:01:00Z", label="second")
+    assert [m.label for m in server.scan(sessions)] == ["second"]
+
+    monkeypatch.setattr(model, "load_sessions", lambda *a, **k: [])  # same watermark set as before
+    fresh = model.Transcripts()
+    fresh.clear()
+
+    assert server.scan(sessions) == []

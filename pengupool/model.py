@@ -634,9 +634,9 @@ class Transcripts:
         self.chains: dict[str, str] = {}  # sessionId -> tracker chain it last switched to
         self.cleared: dict[Path, int] = self._load_cleared()
         try:
-            self._cleared_mtime = CLEARED.stat().st_mtime
+            self._cleared_mtime = CLEARED.stat().st_mtime_ns
         except OSError:
-            self._cleared_mtime = 0.0
+            self._cleared_mtime = 0
 
     def socket_names(self) -> dict[str, str]:
         """'uds:<socket>' -> session name, from every session file (dead ones keep their name)."""
@@ -678,22 +678,25 @@ class Transcripts:
             pass
 
     def _reload_cleared(self) -> None:
-        """Pick up a clear issued by another process (map pane, `serve`, `ctl`) without a restart."""
+        """Pick up a clear issued by another process (the editor's `ctl clear-logs`) without a restart."""
         try:
-            mtime = CLEARED.stat().st_mtime
+            mtime = CLEARED.stat().st_mtime_ns
         except OSError:
-            mtime = 0.0
+            mtime = 0
         if mtime == self._cleared_mtime:
             return
-        before = set(self.cleared.items())
         self._cleared_mtime = mtime
         self.cleared = self._load_cleared()
-        # A "clear logs" happened in another process: drop everything already collected and jump each
+        # Any change to CLEARED *is* a "clear logs": drop everything already collected and jump each
         # transcript's offset to its watermark so no wiped history re-emerges in this process either.
-        if set(self.cleared.items()) != before:
-            self.msgs = []
-            for p, off in self.cleared.items():
-                self.offsets[p] = off
+        # The watermark set can be identical to the previous one — e.g. the clear ran while no session
+        # was live, or while every transcript was already watermarked — and the orphans the user just
+        # ungrouped must still go. So the file change, not its contents, is the signal. Raise (never
+        # lower) each offset to its watermark: a running scanner has already read past a stale
+        # watermark, and rewinding it would replay the very messages the clear just wiped.
+        self.msgs = []
+        for p, off in self.cleared.items():
+            self.offsets[p] = max(self.offsets.get(p, 0), off)
 
     def clear(self) -> None:
         """Drop tracked messages and watermark every live session transcript at its current end, so the
@@ -717,7 +720,7 @@ class Transcripts:
             self.cleared[p] = size      # durable: skip up to here on any fresh scan
         self.msgs = []
         self._save_cleared()
-        self._cleared_mtime = CLEARED.stat().st_mtime if CLEARED.exists() else 0.0
+        self._cleared_mtime = CLEARED.stat().st_mtime_ns if CLEARED.exists() else 0
 
     def scan(self, sessions: list[dict]) -> list[Msg]:
         # incoming envelopes name the sender by socket: `from="uds:/tmp/cc-socks/<pid>.sock"`
