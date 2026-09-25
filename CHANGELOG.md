@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
   message log. The wipe is durable — a per-transcript watermark in `~/.pengupool/cleared.json` — so
   cleared history stays gone across `serve` and restarts; only new messages reappear.
 
+### Changed
+- workflow-tracker: `steps.sh assert <step>` on-demand ordering gate + opt-in
+  `STEP_STATUS_STRICT_ORDER=1` refusal of out-of-order `done`/`fail`; both covered by `--selfcheck`.
+
 - Editor extension: 0.3.0 (install both with `install.sh`; they ship together in this tag).
 ## [0.3.4] - 2026-09-24
 

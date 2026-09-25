@@ -7,6 +7,7 @@
 #   steps.sh start <name> [detail]    mark a step in progress (detail shows as name|detail)
 #   steps.sh done <name>              mark done; activates the next planned step if none is active
 #   steps.sh fail <name>              mark failed
+#   steps.sh assert <name>            ordering gate: exit 2 unless every earlier step is done
 #   steps.sh cycle <step>...          loops: re-arm a segment (the named steps) for its next
 #                                     pass; brackets them as [ … ↻N]. No args reuses the last body
 #   steps.sh msg sent|recv <session> [text]   note a cross-session message on the active step
@@ -88,6 +89,12 @@ valid_chain() {
 
 # bash 3.2-safe membership test (macOS ships bash 3.2 — no namerefs/assoc arrays).
 in_list() { local n="$1"; shift; local x; for x in "$@"; do [[ "$x" == "$n" ]] && return 0; done; return 1; }
+
+# Opt-in ordering enforcement: STEP_STATUS_STRICT_ORDER=1|true|yes|on makes `done`/`fail` refuse to
+# finish a step out of order (an earlier step still not done). Off by default (backward compatible).
+strict_on() {
+  case "${STEP_STATUS_STRICT_ORDER:-}" in 1|true|yes|on) return 0;; *) return 1;; esac
+}
 
 # Every row loop reads `… || [[ -n "${name-}" ]]` so a last row without a trailing newline (a
 # hand-edited file) is still read: dropping it could hide an active step, or make a running chain
@@ -217,6 +224,12 @@ update() {
     sts+=("$st"); names+=("$name"); details+=("$detail")
   done < "$STATE"
   [[ $hit == 1 ]] || { echo "steps.sh: unknown step '$target'" >&2; return 1; }
+  # strict ordering (opt-in): can't finish a step out of order while an earlier step isn't done
+  if [[ "$newst" == done || "$newst" == failed ]] && strict_on; then
+    for (( i=0; i<at; i++ )); do
+      [[ "${sts[$i]}" != done ]] && { echo "steps.sh: strict order: can't $newst '$target' until an earlier step is done" >&2; return 3; }
+    done
+  fi
   # single-current-phase invariant: activating a step demotes any other active step to planned.
   if [[ "$newst" == active ]]; then
     for i in "${!sts[@]}"; do [[ "${names[$i]}" != "$target" && "${sts[$i]}" == active ]] && sts[$i]=planned; done
@@ -300,6 +313,26 @@ msg_step() {
 
 need_name() { [[ -n "${1-}" ]] || { echo "usage: steps.sh $2 <name>" >&2; return 2; }; }
 
+# assert <name> — ordering gate for callers (a skill, or a phase script). Succeeds only if every
+# step before <name> is done, i.e. the workflow has genuinely reached that phase. Jumping ahead is
+# then caught at the call site instead of drifting silently. Exits 3 on unknown step, 2 on blocked.
+assert_step() {
+  local target="$1" st name detail i at=-1
+  local -a sts=() names=()
+  [[ -f "$STATE" ]] || { echo "steps.sh: no chain — run 'set' first" >&2; return 1; }
+  safe_state || return 1
+  while IFS=$'\t' read -r st name detail || [[ -n "${name-}" ]]; do
+    [[ -z "$name" ]] && continue
+    sts+=("$st"); names+=("$name")
+  done < "$STATE"
+  for i in "${!names[@]}"; do [[ "${names[$i]}" == "$target" ]] && { at=$i; break; }; done
+  [[ $at -ge 0 ]] || { echo "steps.sh: assert: unknown step '$target'" >&2; return 3; }
+  for (( i=0; i<at; i++ )); do
+    [[ "${sts[$i]}" != done ]] && { echo "steps.sh: assert: blocked — step '$target' has an earlier step not done" >&2; return 2; }
+  done
+  return 0
+}
+
 selfcheck() {
   local root d s; root="$(mktemp -d)"; d="$root/state"; mkdir "$d"; s="${BASH_SOURCE[0]}"; export STEP_STATUS_DIR="$d"   # two levels so $d/.. fixtures stay private
   r() { bash "$s" render; }
@@ -314,6 +347,26 @@ selfcheck() {
   [[ "$(r)" == "[default] init ✓ → loop ✓ → summary ✗" ]] || fail fail
   bash "$s" set a b c; bash "$s" start b; bash "$s" done a
   [[ "$(r)" == "[default] a ✓ → b ● → c ○" ]] || fail out-of-order
+  # --assert gate: a step with an earlier step not done is blocked; reachable once priors are done
+  bash "$s" use default >/dev/null; bash "$s" set a b c >/dev/null
+  bash "$s" assert b 2>/dev/null && fail assert-before-prior
+  bash "$s" done a >/dev/null
+  bash "$s" assert b || fail assert-after-prior
+  [[ -z "$(bash "$s" assert c 2>/dev/null && echo ok)" ]] || fail assert-c-still-blocked
+  bash "$s" done b >/dev/null
+  bash "$s" assert c || fail assert-c-reachable
+  bash "$s" assert zzz 2>/dev/null && fail assert-unknown-step
+  [[ "$(r)" == "[default] a ✓ → b ✓ → c ●" ]] || fail "assert-unchanged-state: $(r)"
+  bash "$s" clear; bash "$s" use default >/dev/null
+  # strict ordering is OPT-IN: default keeps out-of-order `done` allowed (backward compatible) ...
+  bash "$s" set a b >/dev/null; bash "$s" done b
+  [[ "$(r)" == "[default] a ● → b ✓" ]] || fail "default-allows-out-of-order: $(r)"
+  # ... and STEP_STATUS_STRICT_ORDER=1 refuses it, then admits the ordered path
+  STEP_STATUS_STRICT_ORDER=1 bash "$s" set a b >/dev/null
+  STEP_STATUS_STRICT_ORDER=1 bash "$s" done b 2>/dev/null && fail strict-refuses-out-of-order
+  STEP_STATUS_STRICT_ORDER=1 bash "$s" done a || fail strict-ordered-a
+  STEP_STATUS_STRICT_ORDER=1 bash "$s" done b || fail strict-ordered-b
+  bash "$s" clear
   # single-active: `start` transfers active, never leaves two ●
   bash "$s" set a b; bash "$s" start b
   [[ "$(r)" == "[default] a ○ → b ●" ]] || fail "start-single-active: $(r)"
@@ -454,6 +507,7 @@ main() {
     start) need_name "${1-}" start && valid_name "${2-x}" && update "$1" active "${2-}" && render ;;
     done)  need_name "${1-}" done && update "$1" done && render ;;
     fail)  need_name "${1-}" fail && update "$1" failed && render ;;
+    assert) need_name "${1-}" assert && assert_step "$1" ;;
     cycle) cycle_chain "$@" && render ;;
     msg)   msg_step "$@" && render ;;
     render) render ;;
