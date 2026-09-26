@@ -612,13 +612,14 @@ class ListApp(_Chrome, App):
         def done(res):
             if res is None or "choice" not in res:
                 return
-            groups = model.load_groups()
-            err = model.group_error(n.session_id, res["choice"], model.load_sessions(), groups)
-            if err:
-                self.notify(err, severity="error", markup=False)
-                return
-            groups[n.session_id] = res["choice"]  # "" pins at top level
-            model.save_groups(groups)
+            with model.locked(model.GROUPS):  # one read-modify-write at a time, same as `ctl group`:
+                groups = model.load_groups()  # a regroup here and a drag in the editor must both land
+                err = model.group_error(n.session_id, res["choice"], model.load_sessions(), groups)
+                if err:
+                    self.notify(err, severity="error", markup=False)
+                    return
+                groups[n.session_id] = res["choice"]  # "" pins at top level
+                model.save_groups(groups)
             self.refresh_data(force=True)
         self.push_screen(Ask(f"Move {n.name} under…", [], opts), done)
 
@@ -649,7 +650,8 @@ class ListApp(_Chrome, App):
             if res is None:
                 return
             try:
-                profiles.describe(n.session_id, res["summary"], res["responsibility"], editor="")
+                profiles.describe(n.session_id, res["summary"], res["responsibility"], editor="",
+                                  keywords_text=res["keywords"])
             except (ValueError, PermissionError) as e:
                 self.notify(str(e), severity="error", markup=False)
                 return
@@ -657,7 +659,11 @@ class ListApp(_Chrome, App):
             self.refresh_data(force=True)
         self.push_screen(Ask(f"Describe {n.name}{by}", [
             ("summary", f"summary: one line, what it owns (≤{profiles.SUMMARY_MAX})", p.get("summary", "")),
-            ("responsibility", "responsibility: a short private brief", p.get("responsibility", ""))]), done)
+            ("responsibility", "responsibility: a short private brief", p.get("responsibility", "")),
+            # the same routing terms `ctl describe --keywords` sets: route_match() matches the user's
+            # prompt against them, so the TUI and the editor feed the guard from one profile.
+            ("keywords", f"routing keywords, comma-separated (≤{profiles.KEYWORDS_MAX})",
+             ", ".join(p.get("keywords") or []))]), done)
 
     def action_compact(self) -> None:
         """Send /compact to the selected session (keeps its id, so it stays in its group)."""

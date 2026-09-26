@@ -201,3 +201,55 @@ def _arrow_tree():
     root = Node("1", "lead", "/r", 1, "active", "")
     root.children = [Node("2", "worker-a", "/a", 2, "waiting", "")]
     return root
+
+
+def test_describe_dialog_sets_the_routing_keywords_the_guard_reads(monkeypatch, tmp_path):
+    """The TUI edits the same profile the editor's `ctl describe --keywords` writes, so the routing
+    guard (context.route_match) sees TUI-set keywords too."""
+    from pengupool import profiles
+    _isolated(monkeypatch, tmp_path)
+    a = ListApp()
+    node = Node("c", "kid", "/r", 1, "active", "")
+    monkeypatch.setattr(a, "selected", lambda: node)
+    monkeypatch.setattr(profiles, "load", lambda sid: {"summary": "owns the lexer", "keywords": ["tokens"]})
+    saved = {}
+    monkeypatch.setattr(profiles, "describe",
+                        lambda sid, summary, responsibility, editor=None, keywords_text=None:
+                        saved.update(sid=sid, summary=summary, responsibility=responsibility,
+                                     keywords=keywords_text) or {})
+    monkeypatch.setattr(a, "notify", lambda *a, **k: None)
+    monkeypatch.setattr(a, "refresh_data", lambda **k: None)
+    captured = {}
+    monkeypatch.setattr(a, "push_screen", lambda screen, cb: captured.update(cb=cb))
+    a.action_describe()
+    captured["cb"]({"summary": "owns the lexer", "responsibility": "lexer + tokenizer",
+                    "keywords": "lexer, tokenizer"})
+    assert saved == {"sid": "c", "summary": "owns the lexer", "responsibility": "lexer + tokenizer",
+                     "keywords": "lexer, tokenizer"}
+
+
+def test_group_takes_the_shared_lock_so_tui_and_editor_regroups_both_land(monkeypatch, tmp_path):
+    """Regrouping is a filesystem read-modify-write shared with `ctl group` (the editor's drag)."""
+    from contextlib import contextmanager
+    _isolated(monkeypatch, tmp_path)
+    a = ListApp()
+    node = Node("c", "kid", "/r", 1, "active", "")
+    monkeypatch.setattr(a, "selected", lambda: node)
+    monkeypatch.setattr(a, "all_nodes", lambda: [node])
+    entered = []
+
+    @contextmanager
+    def fake_lock(p):
+        entered.append(p)
+        yield
+    monkeypatch.setattr(model, "locked", fake_lock)
+    monkeypatch.setattr(model, "load_groups", lambda: {})
+    monkeypatch.setattr(model, "group_error", lambda *a, **k: "")
+    monkeypatch.setattr(model, "save_groups", lambda g: None)
+    monkeypatch.setattr(a, "notify", lambda *a, **k: None)
+    monkeypatch.setattr(a, "refresh_data", lambda **k: None)
+    captured = {}
+    monkeypatch.setattr(a, "push_screen", lambda screen, cb: captured.update(cb=cb))
+    a.action_group()
+    captured["cb"]({"choice": ""})
+    assert entered == [model.GROUPS]
