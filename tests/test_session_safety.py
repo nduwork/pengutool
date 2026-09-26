@@ -114,7 +114,7 @@ def test_extension_views_use_window_identity_not_display_name(monkeypatch):
     second = tmux.view_command("%10", "duplicate")
     assert first == renamed
     assert "pv-ext-9" in first and "pv-ext-10" in second
-    assert "set-option -t pv-ext-9 mouse on" in first
+    assert "set-option -u -t pv-ext-9 mouse" in first  # drop an older build's pin so the toggle governs
     assert "set-option -w -t pv-ext-9:@9 window-size latest" in first
 
 
@@ -135,6 +135,7 @@ def test_select_view_restores_automatic_window_sizing(monkeypatch):
 
 def test_mouse_copy_flashes_the_hint_top_right(monkeypatch):
     monkeypatch.setattr(tmux, "_copy_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)
     calls = []
     monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)
 
@@ -151,6 +152,112 @@ def test_mouse_copy_flashes_the_hint_top_right(monkeypatch):
             "\"sleep 2; tmux -L pengupool set-option -t '#{session_name}' status off\"",
             "send-keys -X cancel",  # a tiny drag (a wobbly click) leaves the clipboard alone
         )
+
+
+def test_copy_bindings_install_even_when_mouse_starts_off(monkeypatch):
+    """`copy_on_drag: false` only changes the server's initial mouse option; the drag-copy binding is
+    still installed so prefix+m can restore it without a restart."""
+    monkeypatch.setattr(tmux, "_copy_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: False)
+    calls = []
+    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)
+
+    tmux.enable_mouse_copy()
+
+    assert calls[0] == ("set-option", "-g", "set-clipboard", "on")  # OSC 52 still advertised
+    assert any(c[0] == "bind-key" and "MouseDragEnd1Pane" in c for c in calls), "drag-copy stays installed"
+
+
+def test_copy_on_drag_reads_the_config_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(tmux.model, "PENGU", tmp_path)
+    assert tmux.copy_on_drag() is True  # absent config keeps the tmux drag-copy default
+    (tmp_path / "config.json").write_text('{"copy_on_drag": false}')
+    assert tmux.copy_on_drag() is False
+    (tmp_path / "config.json").write_text('{"copy_on_drag": "no"}')
+    assert tmux.copy_on_drag() is True  # a non-bool falls back to the default
+
+
+def test_tune_appends_the_clipboard_feature_once(monkeypatch):
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "_run", lambda *args, **k: "")
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)
+    calls = []
+    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)
+
+    tmux.tune("cc")
+    tmux.tune("cc")  # the server keeps the appended feature between calls
+
+    assert calls == [
+        ("set-option", "-ga", "terminal-features", tmux.CLIPBOARD_FEATURE),
+        ("set-option", "-g", "history-limit", str(tmux.HISTORY_LIMIT)),
+    ]
+
+
+def test_ensure_server_sets_mouse_from_config_only_when_creating(monkeypatch):
+    """`copy_on_drag: false` starts a fresh server with mouse off (the only way the terminal can select)."""
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: False)
+    monkeypatch.setattr(tmux, "_run", lambda *args, **k: "*:clipboard")
+    calls = []
+    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or args[0] != "has-session")
+
+    assert tmux.ensure_server("cc") is True
+
+    assert ("set-option", "-g", "mouse", "off") in calls
+
+
+def test_ensure_server_does_not_reset_an_existing_mouse_toggle(monkeypatch):
+    """A prefix+m toggle must survive the next CLI process: an existing server keeps its mouse value."""
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)  # the config default is on...
+    monkeypatch.setattr(tmux, "_run", lambda *args, **k: "*:clipboard")
+    calls = []
+    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)  # has-session -> True
+
+    assert tmux.ensure_server("cc") is True
+
+    assert not any(call[:3] == ("set-option", "-g", "mouse") for call in calls), "...but it is not re-applied"
+
+
+def test_mouse_option_follows_copy_on_drag(monkeypatch):
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)
+    assert tmux.mouse_option() == "on"
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: False)
+    assert tmux.mouse_option() == "off"
+
+
+def test_tune_does_not_reappend_a_feature_already_present(monkeypatch):
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)
+    # tmux's live format: the appended entry is stored as `*:clipboard`, without our leading comma.
+    monkeypatch.setattr(tmux, "_run", lambda *args, **k:
+                        "terminal-features[0] xterm*:clipboard:ccolour\n"
+                        f"terminal-features[3] {tmux.CLIPBOARD_MARK}\n")
+    calls = []
+    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)
+
+    tmux.tune("cc")
+
+    assert ("set-option", "-ga", "terminal-features", tmux.CLIPBOARD_FEATURE) not in calls
+    assert ("set-option", "-g", "history-limit", str(tmux.HISTORY_LIMIT)) in calls
+
+
+def test_mouse_toggle_binds_both_servers_once(monkeypatch):
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+    calls = []
+    monkeypatch.setattr(tmux, "_ok", lambda *args, **k: calls.append(args) or True)
+
+    tmux.mouse_toggle("cc")
+    tmux.mouse_toggle("cc")
+
+    assert len(calls) == 1
+    assert calls[0][:5] == ("bind-key", "m", "set-option", "-g", "mouse")
+    cmd = " ".join(calls[0])
+    assert f"tmux -L {tmux.OUTER} set-option -g mouse" in cmd
+    assert f"tmux -L {tmux.harness.SOCK['pi']} set-option -g mouse" in cmd  # other harness stays in step
+    assert "display-message" in calls[0]
 
 
 def test_one_extension_view_can_target_different_windows(monkeypatch):

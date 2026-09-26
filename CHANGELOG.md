@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Terminal selection and copy: work panes keep a 50k-line wheel scrollback and advertise OSC 52 to
+  every terminal (not just `xterm*`), so a tmux copy reaches the system clipboard more widely.
+  `Ctrl-b` then `m` toggles tmux's mouse handling at runtime — off leaves selection and scrolling to
+  the host terminal.
+- `copy_on_drag` in `~/.pengupool/config.json` (default `true`): set it `false` to start with tmux
+  mouse handling off, leaving selection and scrolling to the host terminal (hold Option on macOS or
+  Shift to copy natively). `Ctrl-b` then `m` still restores tmux drag-copy for the session.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added

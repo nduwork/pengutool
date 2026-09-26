@@ -78,6 +78,74 @@ def test_adopt_resumes_with_its_harness_on_its_own_server(servers, monkeypatch, 
             outside.wait(timeout=3)
 
 
+def test_tune_installs_clipboard_and_history_on_the_server(servers, monkeypatch):
+    """tune() reaches the real server: OSC 52 for every TERM and a deep wheel history, once."""
+    (shared, _, _), run = servers
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)
+
+    tmux.tune("cc")
+    tmux.tune("cc")
+
+    features = run(shared, "show-options", "-g", "terminal-features").stdout
+    # tmux stores the appended entry as `*:clipboard` (no leading comma) and must not duplicate it.
+    assert sum(line.endswith(" " + tmux.CLIPBOARD_MARK) for line in features.splitlines()) == 1
+    history = run(shared, "show-options", "-g", "history-limit").stdout.strip()
+    assert history.endswith(str(tmux.HISTORY_LIMIT))
+
+
+def test_ensure_server_defaults_mouse_from_config_on_a_new_server(servers, monkeypatch):
+    """`copy_on_drag: false` turns tmux mouse off when the sessions server is first created."""
+    (shared, _, _), run = servers
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: False)
+    run(shared, "kill-session", "-t", "=pengupool")  # so ensure_server creates a fresh server
+
+    assert tmux.ensure_server("cc") is True
+
+    assert run(shared, "show-options", "-g", "mouse").stdout.strip() == "mouse off"
+    assert run(shared, "show-options", "-A", "-t", "pengupool", "mouse").stdout.strip() == "mouse* off"
+
+
+def test_ensure_server_preserves_an_existing_runtime_mouse_toggle(servers, monkeypatch):
+    """A prefix+m toggle must survive the next CLI process, which calls ensure_server again."""
+    (shared, _, _), run = servers
+    monkeypatch.setattr(tmux, "_tuned", set())
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)  # the config default is on...
+    run(shared, "set-option", "-g", "mouse", "off")          # ...but the user toggled it off
+
+    tmux.ensure_server("cc")
+
+    assert run(shared, "show-options", "-g", "mouse").stdout.strip() == "mouse off"
+
+
+def test_clearing_a_view_mouse_override_returns_to_the_global_toggle(servers):
+    """Older builds pinned `mouse on` on a view; `set-option -u` must return it to the global value so
+    the prefix+m toggle (which sets the global) reaches an upgraded, reused view."""
+    (shared, _, _), run = servers
+    run(shared, "set-option", "-g", "mouse", "on")
+    run(shared, "set-option", "-t", "pengupool", "mouse", "on")  # the old build's pin
+    run(shared, "set-option", "-g", "mouse", "off")  # what a toggle does to the global
+    assert run(shared, "show-options", "-A", "-t", "pengupool", "mouse").stdout.strip() == "mouse on"
+    run(shared, "set-option", "-u", "-t", "pengupool", "mouse")
+    assert run(shared, "show-options", "-A", "-t", "pengupool", "mouse").stdout.strip() == "mouse* off"
+
+
+def test_mouse_toggle_bind_flips_the_server(servers, monkeypatch):
+    (shared, _, _), run = servers
+    monkeypatch.setattr(tmux, "_mouse_ready", set())
+
+    tmux.mouse_toggle("cc")
+
+    bound = run(shared, "list-keys", "-T", "prefix", "m").stdout
+    assert "set-option -g mouse" in bound
+    assert "display-message" in bound
+    assert tmux.OUTER in bound and tmux.harness.SOCK["pi"] in bound  # flips the outer and other harness too
+
+
 def test_one_extension_view_switches_between_windows(servers):
     (shared, _, _), run = servers
     second = run(shared, "new-window", "-d", "-P", "-F", "#{pane_id}",
@@ -93,6 +161,7 @@ def test_a_wobbly_click_does_not_copy_but_a_real_selection_does(servers, monkeyp
     """A click that moves a pixel is a 1-character drag: it must not replace the user's clipboard."""
     (shared, _, _), run = servers
     monkeypatch.setattr(tmux, "_copy_ready", set())
+    monkeypatch.setattr(tmux, "copy_on_drag", lambda: True)
     tmux.enable_mouse_copy("cc")
     bound = run(shared, "list-keys", "-T", "copy-mode").stdout
     assert "MouseDragEnd1Pane" in bound and "if-shell" in bound and "send-keys -X cancel" in bound

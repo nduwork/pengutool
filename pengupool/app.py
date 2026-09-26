@@ -73,6 +73,7 @@ def load_config() -> dict:
         cfg = {}
     cfg["map"] = bool(cfg.get("map", True))
     cfg["log"] = bool(cfg.get("log", True))
+    cfg["copy_on_drag"] = bool(cfg.get("copy_on_drag", True))  # see tmux.copy_on_drag: off = terminal-native selection
     for key, default, lo, hi in (("poll", 1.0, 0.2, 60.0), ("stale_s", 600, 10, 86400),
                                  ("list_w", 34, 20, 120), ("top_h", 16, 5, 200)):
         v = cfg.get(key, default)
@@ -984,12 +985,12 @@ def launch() -> None:
     tmux.outer_ok("kill-server")
     o("-f", "/dev/null", "new-session", "-d", "-s", "ui", "-x", str(cols), "-y", str(rows),
       "-e", "TMUX=", f"{py} -m pengupool.app --pane list")
-    for opt in (("mouse", "on"), ("prefix", "None"), ("prefix2", "None"), ("status", "off"), ("escape-time", "0"),
+    for opt in (("mouse", tmux.mouse_option()), ("prefix", "None"), ("prefix2", "None"), ("status", "off"), ("escape-time", "0"),
                 ("pane-border-status", "top"), ("pane-border-format", " #{pane_title} "), ("focus-events", "on"),
                 ("pane-border-lines", "heavy"), ("pane-border-style", f"fg={BORDER_IDLE}"),
                 ("pane-active-border-style", f"fg={BORDER_ACTIVE}"),
                 ("remain-on-exit", "off"), ("history-limit", "2000"), ("default-terminal", "tmux-256color")):
-        o("set-option", "-g", *opt)  # mouse ON: click selects panes, wheel scrolls, borders drag to resize
+        o("set-option", "-g", *opt)  # mouse ON by default (or off for `copy_on_drag: false`): click selects panes, wheel scrolls, borders drag
     o("set-option", "-ga", "terminal-overrides", ",*:RGB")
     o("bind-key", "-n", "C-t", "select-pane", "-l")  # keyboard alt to clicking: switch focus list <-> work pane
     # Resize by dragging any border with the mouse; Alt+Shift+arrows kept as a keyboard alternative.

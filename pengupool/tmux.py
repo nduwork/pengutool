@@ -1,6 +1,7 @@
 """Thin tmux wrapper. Every function shells out; failures return False/''."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -16,6 +17,13 @@ SESS = harness.SOCK["cc"]  # Claude's sessions server (-L): shared by every VS C
 #                            takes `h` ("cc" | "pi") and talks only to that harness's server.
 OUTER = "pengupool-ui"  # private tmux server (-L) that hosts the terminal UI's own panes
 SHELLS = {"sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "login", ""}
+# Agent-pane scrollback for the wheel: tmux's default of 2000 lines runs out fast when an agent
+# streams, so the sessions server gets a deeper history (tmux applies it to panes created after).
+HISTORY_LIMIT = 50000
+# OSC 52 `Ms` for every TERM, not just `xterm*`: lets a tmux copy reach the host clipboard in
+# terminals tmux does not already cover. Appended once, because appending repeats it each launch.
+CLIPBOARD_FEATURE = ",*:clipboard"
+CLIPBOARD_MARK = "*:clipboard"  # tmux stores the entry without the leading comma; match that for idempotency
 _CACHE: dict[str, tuple[float, str]] = {}
 
 
@@ -122,9 +130,19 @@ def switch(pane: str, h: str = "cc") -> bool:
 
 def ensure_server(h: str = "cc") -> bool:
     """Make sure the harness's sessions server has a session to put agent windows in."""
-    if _ok("has-session", "-t", "=" + SESSION, h=h):
-        return True
-    return _ok("new-session", "-d", "-s", SESSION, h=h) and _ok("set-option", "-t", SESSION, "status", "off", h=h)
+    created = False
+    if not _ok("has-session", "-t", "=" + SESSION, h=h):
+        if not (_ok("new-session", "-d", "-s", SESSION, h=h)
+                and _ok("set-option", "-t", SESSION, "status", "off", h=h)):
+            return False
+        created = True
+    tune(h)
+    if created:
+        # Only on a fresh server: the default comes from config, but a prefix+m toggle at runtime must
+        # survive the next CLI process, which would otherwise re-apply the default here.
+        _ok("set-option", "-g", "mouse", mouse_option(), h=h)
+    mouse_toggle(h)
+    return True
 
 
 def target_session() -> str:
@@ -165,7 +183,7 @@ def view_command(pane: str, name: str, view_id: str = "", h: str = "cc") -> str:
             f"\\; select-window -t {shlex.quote(view + ':' + win)} "
             f"\\; set-option -w -t {shlex.quote(view + ':' + win)} window-size latest "
             f"\\; set-option -t {shlex.quote(view)} status off "
-            f"\\; set-option -t {shlex.quote(view)} mouse on")
+            f"\\; set-option -u -t {shlex.quote(view)} mouse")  # drop an older build's pin, follow the global toggle
 
 
 def select_view(pane: str, view_id: str, h: str = "cc") -> bool:
@@ -203,9 +221,9 @@ def show_in_client(tty: str, pane: str, h: str = "cc") -> bool:
         if not _ok("new-session", "-d", "-t", session, "-s", view, h=h):
             return False
         _ok("set-option", "-t", view, "status", "off", h=h)
-        # mouse ON so the wheel scrolls agent history and clicks land in the work pane; a left-drag
-        # selects text and auto-copies to the clipboard on release (see enable_mouse_copy).
-        _ok("set-option", "-t", view, "mouse", "on", h=h)
+    # Drop any session-level mouse override (older builds pinned `mouse on` here), so the view follows
+    # the server's global setting and the prefix+m toggle reaches it.
+    _ok("set-option", "-u", "-t", view, "mouse", h=h)
     enable_mouse_copy(h)
     if not (_ok("switch-client", "-c", tty, "-t", view, h=h) and _ok("select-window", "-t", f"{view}:{widx}", h=h)
             and _ok("select-pane", "-t", pane, h=h)):
@@ -232,6 +250,82 @@ def kill_views() -> None:
 
 
 _copy_ready: set[str] = set()  # servers whose copy binds are installed
+_tuned: set[str] = set()  # servers whose clipboard/scrollback defaults are installed
+_mouse_ready: set[str] = set()  # servers whose mouse toggle bind is installed
+
+
+def _has_clipboard_feature(h: str = "cc") -> bool:
+    """True when a `*:clipboard` terminal-features entry is already set. tmux drops the leading comma
+    we append, so match the stored entry exactly rather than the append form."""
+    for line in _run("show-options", "-g", "terminal-features", h=h).splitlines():
+        if line.rpartition(" ")[2].strip() == CLIPBOARD_MARK:
+            return True
+    return False
+
+
+def tune(h: str = "cc") -> None:
+    """Server-wide clipboard and scrollback defaults for a harness's sessions server (idempotent).
+
+    `terminal-features ,*:clipboard` advertises the OSC 52 `Ms` capability to every TERM, so a tmux
+    copy reaches the system clipboard beyond `xterm*`; `history-limit` deepens the wheel scrollback."""
+    if h in _tuned:
+        return
+    _tuned.add(h)
+    if not _has_clipboard_feature(h):
+        _ok("set-option", "-ga", "terminal-features", CLIPBOARD_FEATURE, h=h)
+    _ok("set-option", "-g", "history-limit", str(HISTORY_LIMIT), h=h)
+    # NB: the `mouse` default is set only when a server is first created (see ensure_server), not here:
+    # `tune` runs on every CLI process, and re-applying it would undo a runtime prefix+m toggle.
+
+
+def _config() -> dict:
+    """Read ~/.pengupool/config.json (the TUI's own config); {} when missing or malformed."""
+    try:
+        data = json.loads((model.PENGU / "config.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def copy_on_drag() -> bool:
+    """Whether a work-pane drag selects in tmux and auto-copies on release (the default).
+
+    With `"copy_on_drag": false` in ~/.pengupool/config.json, selection is left to the host terminal:
+    hold Option (macOS) or Shift while dragging to copy with the terminal's own clipboard."""
+    value = _config().get("copy_on_drag", True)
+    return value if isinstance(value, bool) else True
+
+
+def mouse_option() -> str:
+    """The `mouse` value PenguPool's servers default to: `on` lets tmux scroll history and drag-copy;
+    `off` (`copy_on_drag: false`) leaves selection and scrolling to the host terminal. Set globally so
+    the prefix+m toggle can still flip it — pinning it per session/view would override the global."""
+    return "on" if copy_on_drag() else "off"
+
+
+def _mouse_flip_command(h: str) -> str:
+    """Shell that flips the mouse option on the servers this bind does not run on: the other harness's
+    sessions server and the TUI's private server. The bound `set-option` already flipped the current one,
+    so both work panes and the outer UI stay in step. Absent servers just fail and are ignored."""
+    socks = sorted({harness.SOCK[o] for o in harness.HARNESSES if o != h})
+    flips = [f"tmux -L {sock} set-option -g mouse 2>/dev/null" for sock in (*socks, OUTER)]
+    return " ; ".join(flips) + " ; true"
+
+
+def mouse_toggle(h: str = "cc") -> None:
+    """Bind prefix + m on the sessions server to flip tmux's mouse handling at runtime (idempotent).
+
+    Mouse off leaves selection to the host terminal (hold Option/Shift to copy natively); mouse on
+    restores tmux history scroll and drag-copy. The bind flips the other harness's server and the TUI's
+    private server too, so every work pane and the outer panes agree."""
+    if h in _mouse_ready:
+        return
+    _mouse_ready.add(h)
+    # `set-option -g mouse` with no value toggles the boolean (tmux's own idiom). The escaped `\;`
+    # keeps the commands inside the binding instead of running the tail of it now.
+    _ok("bind-key", "m", "set-option", "-g", "mouse", r"\;",
+        "run-shell", _mouse_flip_command(h), r"\;",
+        "display-message", "mouse #{?mouse,on,off} (off = terminal-native selection)", h=h)
 
 
 # The copy hint: the status line (off in every view) is drawn at the top with only a right-aligned
@@ -248,10 +342,11 @@ MIN_SELECTION = ("#{||:#{!=:#{selection_start_y},#{selection_end_y}},"
 
 
 def enable_mouse_copy(h: str = "cc") -> None:
-    """Drag-select in the work pane auto-copies to the macOS clipboard, mouse staying on for
-    scroll/click. tmux enters copy-mode on a left-drag; on release we pipe the selection to pbcopy
-    and flash the copy hint in the top-right corner of that view (set-clipboard also lets
-    OSC52-capable terminals copy). Global binds, so set once per process."""
+    """Install drag-select copy on a harness's server: tmux enters copy-mode on a left-drag and on
+    release we pipe the selection to pbcopy and flash the copy hint in the top-right corner
+    (set-clipboard also lets OSC52-capable terminals copy). Global binds, set once per process.
+    Installed even when the server starts with mouse off (`copy_on_drag: false`), so the prefix+m
+    toggle restores drag-copy intact rather than leaving copy-mode without it."""
     if h in _copy_ready:
         return
     _copy_ready.add(h)
