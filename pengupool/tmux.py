@@ -14,6 +14,7 @@ SESS = harness.SOCK["cc"]  # Claude's sessions server (-L): shared by every VS C
 #                            so a session started in one is attachable in another (no restart).
 #                            pi sessions live on their own server, harness.SOCK["pi"]: every helper below
 #                            takes `h` ("cc" | "pi") and talks only to that harness's server.
+OUTER = "pengupool-ui"  # private tmux server (-L) that hosts the terminal UI's own panes
 SHELLS = {"sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "login", ""}
 _CACHE: dict[str, tuple[float, str]] = {}
 
@@ -32,6 +33,21 @@ def _cached(key: str, ttl: float, *args: str, h: str = "cc") -> str:
 
 def _user(*args: str, h: str = "cc") -> list[str]:
     return ["tmux", "-L", harness.SOCK[h], *args]  # the harness's shared PenguPool sessions server
+
+
+def outer(*args: str) -> str:
+    """Run a command on PenguPool's private UI server (the terminal UI's own panes)."""
+    try:
+        return subprocess.run(["tmux", "-L", OUTER, *args], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def outer_ok(*args: str) -> bool:
+    try:
+        return subprocess.run(["tmux", "-L", OUTER, *args], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def safe_arg(s: str) -> str:
@@ -168,6 +184,51 @@ def select_view(pane: str, view_id: str, h: str = "cc") -> bool:
                    for name, sep, session in [line.partition("\t")]
                    if sep and session == view), "")
     return not client or _ok("switch-client", "-c", client, "-t", "=" + view, h=h)
+
+
+def show_in_client(tty: str, pane: str, h: str = "cc") -> bool:
+    """Point the terminal UI's nested client (`tty`) at `pane` without touching the user's own clients:
+    tmux keeps 'current window' per session, so attach the client to a grouped view (shares the
+    windows, has its own current window) and select the window there."""
+    info = _run("display-message", "-p", "-t", pane, "#{session_group}\t#{session_name}\t#{window_index}",
+                h=h).rstrip("\r\n")
+    if info.count("\t") != 2:
+        return False
+    group, sname, widx = info.split("\t")
+    session = (group or sname)
+    if session.startswith("pv-"):
+        session = session[3:]
+    view = "pv-tui-" + safe_arg(session)[:40]
+    if not _ok("has-session", "-t", "=" + view, h=h):
+        if not _ok("new-session", "-d", "-t", session, "-s", view, h=h):
+            return False
+        _ok("set-option", "-t", view, "status", "off", h=h)
+        # mouse ON so the wheel scrolls agent history and clicks land in the work pane; a left-drag
+        # selects text and auto-copies to the clipboard on release (see enable_mouse_copy).
+        _ok("set-option", "-t", view, "mouse", "on", h=h)
+    enable_mouse_copy(h)
+    if not (_ok("switch-client", "-c", tty, "-t", view, h=h) and _ok("select-window", "-t", f"{view}:{widx}", h=h)
+            and _ok("select-pane", "-t", pane, h=h)):
+        return False
+    fit_window(tty, f"{view}:{widx}", h)
+    return True
+
+
+def fit_window(tty: str, window: str, h: str = "cc") -> None:
+    """Let a shared window follow the latest active client as either front end is resized. An explicit
+    ``resize-window`` permanently changes tmux's per-window policy to ``manual``, leaving dotted unused
+    space when an editor terminal later grows, so restore automatic sizing. ``tty`` stays in the
+    signature because callers identify the client they switched."""
+    del tty
+    _ok("set-option", "-w", "-t", window, "window-size", "latest", h=h)
+
+
+def kill_views() -> None:
+    """Remove only terminal-UI views on every harness server; editor clients may still be attached."""
+    for h in harness.HARNESSES:
+        for line in _run("list-sessions", "-F", "#{session_name}", h=h).splitlines():
+            if line.startswith("pv-tui-"):
+                _ok("kill-session", "-t", "=" + line, h=h)
 
 
 _copy_ready: set[str] = set()  # servers whose copy binds are installed
