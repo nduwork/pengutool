@@ -274,8 +274,8 @@ def tune(h: str = "cc") -> None:
     if not _has_clipboard_feature(h):
         _ok("set-option", "-ga", "terminal-features", CLIPBOARD_FEATURE, h=h)
     _ok("set-option", "-g", "history-limit", str(HISTORY_LIMIT), h=h)
-    # NB: the `mouse` default is set only when a server is first created (see ensure_server), not here:
-    # `tune` runs on every CLI process, and re-applying it would undo a runtime prefix+m toggle.
+    # NB: the `mouse` default is set only when a server is first created (see ensure_server). `tune`
+    # runs on every CLI process, so re-applying it here would undo a runtime prefix+m toggle.
 
 
 def _config() -> dict:
@@ -298,8 +298,8 @@ def copy_on_drag() -> bool:
 
 def mouse_option() -> str:
     """The `mouse` value PenguPool's servers default to: `on` lets tmux scroll history and drag-copy;
-    `off` (`copy_on_drag: false`) leaves selection and scrolling to the host terminal. Set globally so
-    the prefix+m toggle can still flip it — pinning it per session/view would override the global."""
+    `off` (`copy_on_drag: false`) leaves selection and scrolling to the host terminal. Set it globally
+    so the prefix+m toggle can still flip it; a per session or per view value would override it."""
     return "on" if copy_on_drag() else "off"
 
 

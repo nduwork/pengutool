@@ -4,7 +4,7 @@ Manage collaborating Claude Code and pi sessions in VS Code. PenguPool shows a s
 map and message log, and a shared tmux terminal for each harness. The extension uses the separate
 PenguPool Python CLI (`pengupool serve`) as its backend.
 
-Session panes are drawn with VS Code's own terminal via tmux **control mode**, so text selection,
+Session panes are drawn with VS Code's own terminal through tmux control mode, so text selection,
 copy/paste, scrolling, and find work natively; tmux still keeps the session running when you close
 VS Code. Set `pengupool.terminalMode` to `tmux` if you prefer a real `tmux attach` (tmux's own
 copy-mode and mouse handling).
