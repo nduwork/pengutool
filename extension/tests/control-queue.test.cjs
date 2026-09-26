@@ -151,3 +151,32 @@ test('input during a pending switch targets the pane being switched to', async (
   assert.ok(sends.every((cmd) => cmd.includes('-t %1')), 'input goes to the requested pane, not the old one');
   control.dispose();
 });
+
+test('a failed capture is reported and the next show retries instead of caching a blank paint', async () => {
+  const pty = new FakePty();
+  pty.autoAnswer = false;
+  const control = new ControlSession({ socket: 's', view: 'v', base: 't', cols: 80, rows: 24,
+                                       spawn: () => pty, commandTimeoutMs: 1000 });
+  control.start();
+  pty.emit('\x1bP1000p%begin 1 1 0\r\n%end 1 1 0\r\n');
+  let paints = 0;
+  control.onData = () => { paints++; };
+  let captures = 0;
+  pty.onWrite = (cmd) => {
+    if (cmd.startsWith('select-window')) { pty.emit('%begin 2 2 0\r\n%end 2 2 0\r\n'); }
+    else if (cmd.startsWith('capture-pane')) {
+      captures++;
+      if (captures === 1) { pty.emit('%begin 3 3 0\r\n%error 3 3 0\r\n'); }  // tmux fails the capture
+      else { pty.emit('%begin 4 4 0\r\nHELLO\r\n%end 4 4 0\r\n'); }
+    } else if (cmd.includes('#{window_id}')) { pty.emit('%begin 5 5 0\r\n@0\r\n%end 5 5 0\r\n'); }
+    else if (cmd.includes('#{alternate_on}')) { pty.emit('%begin 6 6 0\r\n0\r\n%end 6 6 0\r\n'); }
+    else { pty.emit('%begin 7 7 0\r\n0 0\r\n%end 7 7 0\r\n'); }
+  };
+
+  assert.equal(await control.show('%0'), false, 'a failed capture is reported as a failed paint');
+  assert.equal(paints, 0, 'nothing is painted on failure');
+  assert.equal(await control.show('%0'), true, 'the same pane can be shown again');
+  assert.equal(paints, 1, 'the retry paints the captured screen');
+  assert.equal(control.running, true, 'the session is still usable after a capture error');
+  control.dispose();
+});

@@ -21,6 +21,10 @@ export class ControlTerminal implements vscode.Pseudoterminal {
   readonly onDidWrite = this.writeEmitter.event;
   readonly onDidClose = this.closeEmitter.event;
 
+  /** Called when a pane paint fails (capture error or timeout), so the manager can let the next
+   *  selection retry instead of leaving the terminal blank. */
+  onPaintFailed?: () => void;
+
   private readonly session: ControlSession;
   private opened = false;
   private pendingPane?: string;
@@ -45,16 +49,22 @@ export class ControlTerminal implements vscode.Pseudoterminal {
       const force = this.forcePending;
       this.pendingPane = undefined;
       this.forcePending = false;
-      void (force ? this.session.repaint(pane) : this.session.show(pane));
+      void this.paint(pane, force);
     }
   }
 
   /** Paint `pane` in this terminal. Queued until VS Code opens it; `force` repaints an unchanged pane
    *  (a restarted session keeps its pane id but has a new screen). */
-  showPane(pane: string, force = false): Promise<void> {
-    if (this.closed) { return Promise.resolve(); }
-    if (!this.opened) { this.pendingPane = pane; this.forcePending ||= force; return Promise.resolve(); }
-    return force ? this.session.repaint(pane) : this.session.show(pane);
+  showPane(pane: string, force = false): Promise<boolean> {
+    if (this.closed) { return Promise.resolve(false); }
+    if (!this.opened) { this.pendingPane = pane; this.forcePending ||= force; return Promise.resolve(true); }
+    return this.paint(pane, force);
+  }
+
+  private async paint(pane: string, force: boolean): Promise<boolean> {
+    const ok = await (force ? this.session.repaint(pane) : this.session.show(pane));
+    if (!ok) { this.onPaintFailed?.(); }
+    return ok;
   }
 
   handleInput(data: string): void { this.session.input(data); }

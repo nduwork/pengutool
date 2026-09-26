@@ -11,13 +11,13 @@
  * paint that once, then stream live `%output` bytes. Mouse-tracking sequences are stripped so the
  * host terminal keeps native selection. Input goes back as raw bytes via `send-keys -H`.
  *
- * Framing: tmux answers each command with exactly one `%begin`/`%end` block, so every command —
- * including keystrokes — goes through one serialized queue (`command`). Blocks that arrive before
- * the client is ready (`ready`) are the attach handshake and are never mistaken for a response.
+ * Framing: tmux answers each command with exactly one `%begin`/`%end` block, so one serialized queue
+ * (`command`) carries every command, keystrokes included. Blocks that arrive before the client is
+ * ready (`ready`) are the attach handshake and are never mistaken for a response.
  *
  * Deliberately free of `vscode` so it can be exercised against a real tmux in tests.
  */
-import * as pty from 'node-pty';
+import type * as pty from 'node-pty';
 import { StringDecoder } from 'node:string_decoder';
 import { ControlParser, ControlFrame, hexKeys, MouseModeFilter } from './controlProtocol';
 
@@ -41,6 +41,21 @@ const COMMAND_TIMEOUT_MS = 4000;
 const READY_FALLBACK_MS = 600;  // send commands even if tmux never emits the attach handshake
 const INPUT_CHUNK = 1024;       // bytes per `send-keys -H`; keeps the command line short
 
+type PtyModule = typeof import('node-pty');
+let ptyModule: PtyModule | null | undefined;
+
+/** node-pty is a native addon and may be missing for this platform. Load it lazily so importing this
+ *  module (and activating the extension) never fails, and control mode can fall back to tmux. */
+function loadPty(): PtyModule | null {
+  if (ptyModule === undefined) {
+    try { ptyModule = require('node-pty') as PtyModule; } catch { ptyModule = null; }
+  }
+  return ptyModule;
+}
+
+/** True when the native addon loads on this host; control mode needs it. */
+export function controlAvailable(): boolean { return loadPty() !== null; }
+
 export class ControlSession {
   /** Called with rendered bytes for the visible pane, ready to write to the terminal. */
   onData?: (data: string) => void;
@@ -53,9 +68,7 @@ export class ControlSession {
   private filter = new MouseModeFilter();
   private pane = '';    // pane whose output we forward / seed (set once the switch paints)
   private target = '';  // pane input goes to (set as soon as a switch is requested)
-  private cols: number;
-  private rows: number;
-  private inflight: { id?: number; lines: string[]; resolve: (text: string) => void; onReply?: () => void } | null = null;
+  private inflight: { id?: number; lines: string[]; resolve: (text: string) => void; reject: (error: Error) => void; onReply?: () => void } | null = null;
   private readonly staleEnds = new Set<number>();  // blocks abandoned by a timeout, to be ignored
   private queue: Array<() => void> = [];
   private started = false;
@@ -72,8 +85,6 @@ export class ControlSession {
   private readonly historyLines: number;
 
   constructor(private readonly opts: ControlSessionOptions) {
-    this.cols = opts.cols;
-    this.rows = opts.rows;
     this.timeout = opts.commandTimeoutMs ?? COMMAND_TIMEOUT_MS;
     this.historyLines = Math.max(0, opts.historyLines ?? 1000);
     let resolve!: () => void;
@@ -87,12 +98,14 @@ export class ControlSession {
     if (this.started) { return; }
     this.started = true;
     const args = ['-CC', '-L', this.opts.socket, 'new-session', '-A', '-s', this.opts.view, '-t', this.opts.base];
+    const spawn = this.opts.spawn ?? loadPty()?.spawn;
+    if (!spawn) { throw new Error('node-pty is not available for this platform'); }
     // `encoding: null` yields raw Buffers, so a multi-byte character split across tmux's writes is
     // decoded by the streaming StringDecoder instead of being mangled by node-pty.
-    this.proc = (this.opts.spawn ?? pty.spawn)('tmux', args, {
+    this.proc = spawn('tmux', args, {
       name: 'tmux-256color',
-      cols: this.cols,
-      rows: this.rows,
+      cols: this.opts.cols,
+      rows: this.opts.rows,
       cwd: this.opts.cwd || process.cwd(),
       env: { ...process.env, TERM: 'tmux-256color' } as { [key: string]: string },
       encoding: null as unknown as string,
@@ -104,17 +117,18 @@ export class ControlSession {
   }
 
   /** Paint `pane` and stream its live output until another pane is shown. Serialized so overlapping
-   *  switches cannot interleave; `force` re-paints a pane whose process was restarted. */
-  show(pane: string, force = false): Promise<void> {
+   *  switches cannot interleave; `force` re-paints a pane whose process was restarted. Resolves false
+   *  when the paint failed, so the caller can let the next selection retry. */
+  show(pane: string, force = false): Promise<boolean> {
     this.target = pane;  // route input here immediately; the paint may still be queued
     const generation = ++this.generation;
     const run = this.showChain.then(() => this.doShow(pane, force, generation));
-    this.showChain = run.catch(() => undefined);
+    this.showChain = run.then(() => undefined, () => undefined);
     return run;
   }
 
   /** Re-paint the current pane even if it has not changed. */
-  repaint(pane: string): Promise<void> { return this.show(pane, true); }
+  repaint(pane: string): Promise<boolean> { return this.show(pane, true); }
 
   /** Send typed input to the visible pane as raw bytes (escape sequences included). Keystrokes share
    *  the command queue so each `%end` still maps to the command that produced it. */
@@ -122,13 +136,11 @@ export class ControlSession {
     if (!this.target || !this.proc || this.exited || !data) { return; }
     const bytes = Buffer.from(data, 'utf8');
     for (let i = 0; i < bytes.length; i += INPUT_CHUNK) {
-      void this.command(`send-keys -t ${this.target} -H ${hexKeys(bytes.subarray(i, i + INPUT_CHUNK))}`);
+      void this.command(`send-keys -t ${this.target} -H ${hexKeys(bytes.subarray(i, i + INPUT_CHUNK))}`).catch(() => {});
     }
   }
 
   resize(cols: number, rows: number): void {
-    this.cols = cols;
-    this.rows = rows;
     if (this.proc && !this.exited) { this.proc.resize(cols, rows); }
   }
 
@@ -138,9 +150,9 @@ export class ControlSession {
     try { this.proc?.kill(); } catch { /* already gone */ }
   }
 
-  private async doShow(pane: string, force: boolean, generation: number): Promise<void> {
-    if (generation !== this.generation || !this.proc || this.exited) { return; }  // superseded before start
-    if (!force && pane === this.pane) { return; }
+  private async doShow(pane: string, force: boolean, generation: number): Promise<boolean> {
+    if (generation !== this.generation || !this.proc || this.exited) { return false; }  // superseded before start
+    if (!force && pane === this.pane) { return true; }
     this.decoder = new StringDecoder('utf8');
     this.filter = new MouseModeFilter();
     this.seeding = true;
@@ -160,7 +172,7 @@ export class ControlSession {
       const history = this.historyLines > 0 && alt !== '1' ? `-S -${this.historyLines} ` : '';
       const text = await this.command(`capture-pane -e -p ${history}-t ${pane}`, () => { this.seedBuffer = ''; });
       const cursor = (await this.command(`display-message -p -t ${pane} '#{cursor_x} #{cursor_y}'`)).trim();
-      if (generation !== this.generation) { return; }  // a newer switch took over; let it paint
+      if (generation !== this.generation) { return false; }  // a newer switch took over; let it paint
       let paint = alt === '1' ? '\x1b[?1049h' : '\x1b[?1049l';
       // 3J clears saved lines so one reused terminal does not stack every session's history together.
       paint += '\x1b[3J\x1b[2J\x1b[H' + text.replace(/\n$/, '').split('\n').join('\r\n');
@@ -171,6 +183,11 @@ export class ControlSession {
       if (Number.isFinite(x) && Number.isFinite(y)) { paint += `\x1b[${y + 1};${x + 1}H`; }
       paint += this.seedBuffer;  // bytes that arrived while we were capturing
       this.onData?.(paint);
+      return true;
+    } catch {
+      // A failed or timed-out command: paint nothing and let a later show retry this pane.
+      this.pane = '';
+      return false;
     } finally {
       this.seeding = false;
       this.seedBuffer = '';
@@ -181,17 +198,19 @@ export class ControlSession {
     try { this.proc?.write(cmd + '\n'); } catch { /* process gone; exit handler runs */ }
   }
 
-  /** Run a tmux command and resolve with its response block ('' on error or timeout). Every send
-   *  awaits `ready` and joins one serialized queue, so responses match commands one-to-one. A
-   *  timed-out command is dropped and its late block ignored, so the queue never stalls. */
+  /** Run a tmux command and resolve with its response block. Every send awaits `ready` and joins one
+   *  serialized queue, so responses match commands one-to-one. Rejects on `%error` or timeout so the
+   *  caller can treat a failed capture as a failed switch, and drops a timed-out block's late reply so
+   *  the queue never stalls. */
   private async command(cmd: string, onReply?: () => void): Promise<string> {
     await this.ready;
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const entry: { id?: number; lines: string[]; resolve: (text: string) => void; onReply?: () => void } = {
+      const entry: { id?: number; lines: string[]; resolve: (text: string) => void; reject: (error: Error) => void; onReply?: () => void } = {
         lines: [], onReply,
         resolve: (text) => { if (!settled) { settled = true; clearTimeout(timer); resolve(text); } },
+        reject: (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } },
       };
       // The timeout starts only when this command is actually sent: a large paste queues many
       // commands, and one must not expire while still waiting behind the others.
@@ -209,12 +228,12 @@ export class ControlSession {
               // No %begin within the timeout: tmux is not answering, and a later block could be this
               // reply or the next command's, which we cannot tell apart. Close rather than mis-match.
               this.inflight = null;
-              entry.resolve(entry.lines.join('\n'));
+              entry.reject(new Error('tmux did not answer'));
               this.dispose();
               return;
             }
           }
-          entry.resolve(entry.lines.join('\n'));
+          entry.reject(new Error('tmux did not answer'));
         }, this.timeout);
       });
       if (!this.inflight) { this.queue.shift()?.(); }
@@ -245,8 +264,8 @@ export class ControlSession {
         const done = this.inflight;
         if (done && (done.id === undefined || done.id === frame.id)) {
           this.inflight = null;
-          done.onReply?.();
-          done.resolve(done.lines.join('\n'));
+          if (frame.kind === 'error') { done.reject(new Error('tmux command failed')); }
+          else { done.onReply?.(); done.resolve(done.lines.join('\n')); }
           this.queue.shift()?.();
         } else if (!done) {
           this.markReady();  // the unsolicited attach handshake completed

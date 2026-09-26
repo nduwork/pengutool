@@ -21,9 +21,10 @@ function load(file, deps) {
 }
 
 /** Fake VS Code whose `pengupool.terminalMode` is `control`, with a recording ControlTerminal. */
-function harness() {
+function harness({ controlAvailable = true } = {}) {
   const terminals = [];
   const shown = [];        // [pane, force] passed to showPane
+  const warnings = [];
   let closeHandler = () => {};
   class ControlTerminal {
     constructor(options) { this.options = options; this.closed = false; }
@@ -49,7 +50,7 @@ function harness() {
         return terminal;
       },
       showErrorMessage: () => {},
-      showWarningMessage: async () => undefined,
+      showWarningMessage: (message) => { warnings.push(message); return Promise.resolve(undefined); },
       withProgress: async (_options, task) => task(),
     },
   };
@@ -57,9 +58,10 @@ function harness() {
   const ctl = { runCtl: async () => ({ code: 0, stderr: '', stdout: JSON.stringify(
     { command: 'tmux attach', pane: current.pane, cwd: '/repo', harness: current.harness }) }) };
   vscode.workspace.getConfiguration = () => ({ get: (key, dflt) => (key === 'terminalMode' ? current.mode : dflt) });
-  const { TerminalManager } = load('terminals.ts', { vscode, './util': ctl, './controlTerminal': { ControlTerminal } });
+  const { TerminalManager } = load('terminals.ts', { vscode, './util': ctl, './controlTerminal': { ControlTerminal },
+                                                    './controlSession': { controlAvailable: () => controlAvailable } });
   const manager = new TerminalManager({ workspaceState: { get: () => ({}), update: async () => {} } });
-  return { manager, terminals, shown, current, close: (terminal) => closeHandler(terminal) };
+  return { manager, terminals, shown, current, warnings, close: (terminal) => closeHandler(terminal) };
 }
 
 const node = (id, harness = 'cc') => ({ id, name: id, harness, children: [] });
@@ -129,4 +131,23 @@ test('switching to tmux mode closes the control client, and back makes a fresh o
   assert.equal(h.terminals.length, 3);
   assert.notEqual(h.terminals[2].options.pty, control, 'a fresh control client, not the closed one');
   assert.deepEqual(h.shown.at(-1), ['%9', false], 'the new control terminal shows the requested pane');
+});
+
+test('a failed paint clears the current session so the next selection retries', async () => {
+  const h = harness();
+  await h.manager.switchTo(node('a'));
+  const pty = h.terminals[0].options.pty;
+  pty.onPaintFailed();  // the control session reports a failed capture
+
+  h.shown.length = 0;
+  assert.equal(await h.manager.switchTo(node('a')), true);
+  assert.equal(h.terminals.length, 1, 'the same terminal is reused');
+  assert.deepEqual(h.shown.at(-1), ['%7', false], 'the paint is retried instead of returning early');
+});
+
+test('falls back to tmux mode when the native addon is unavailable', async () => {
+  const h = harness({ controlAvailable: false });
+  assert.equal(await h.manager.switchTo(node('a')), true);
+  assert.ok(h.terminals[0].options.shellPath, 'runs a real tmux client instead of a control pty');
+  assert.equal(h.warnings.length, 1, 'warns once about the fallback');
 });

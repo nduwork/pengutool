@@ -7,6 +7,9 @@
   like any other VS Code terminal; tmux still keeps the session alive when you close the editor.
   Mouse-tracking sequences from agents are dropped so the host keeps the mouse. Set
   `pengupool.terminalMode` to `tmux` to restore the old terminal.
+- A failed screen capture reports failure and retries on the next selection instead of leaving a
+  blank terminal. When the native addon is not available for the platform, control mode falls back to
+  the tmux terminal so the extension still activates.
 
 ## 0.3.0
 
