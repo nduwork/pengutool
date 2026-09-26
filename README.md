@@ -1,6 +1,6 @@
 # PenguPool
 
-**See your agent sessions in one place.** PenguPool is a VS Code/Cursor extension, backed by a local Python CLI, for managing Claude Code and pi sessions. It shows the session tree, a live map of who is talking to whom, recent messages, and a tmux-backed terminal per harness. Sessions run in tmux and keep running when you close the editor.
+**See your agent sessions in one place.** PenguPool manages collaborating Claude Code and pi sessions from VS Code/Cursor or its own terminal UI, backed by a local Python CLI. It shows the session tree, a live map of who is talking to whom, recent messages, and a tmux-backed terminal per harness. Sessions run in tmux and keep running when you close the front end.
 
 ## Tutorial
 
@@ -48,6 +48,10 @@ Grouped sessions receive a short `<pengupool>` block with their tree, parent, ch
 Triage gets a hint from code. When a prompt matches a child's routing keywords (`pengupool ctl describe <id> --keywords "lexer, parser"`), name, workspace or role, the session is told `ROUTE CHECK` with the words that matched, and decides whether to route. A session with no role is told `ROLE REQUIRED`. Messages from other sessions, idle notices and subagent reports never trigger the check. Each grouped reply starts with a `Triage:` line, and "do it yourself" in a prompt turns the check off for that prompt.
 
 PenguPool reads local Claude Code and pi session files and keeps its own state under `~/.pengupool/`. It does not need a cloud account or hosted service. The bundled [workflow tracker](workflow-tracker/SKILL.md) shows each session's current work phase under its map card.
+
+## Terminal UI
+
+Prefer the terminal? Run `pengupool` (or `pengupool tui`) with no command. It starts a private tmux session with three panes: the session list, the map and message log, and a nested client onto the selected agent. The keys match the editor: `Enter` switches the agent pane, `n`/`a` start or add a session, `g` groups, `r`/`x`/`c` rename/close/compact, `Shift+R` restarts and resumes. The TUI and the editor read and write the same `~/.pengupool/` state, so you can use either or both.
 
 ## Develop
 
