@@ -5,12 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
 ### Added
 - Terminal UI restored: `pengupool` (or `pengupool tui`) launches the tmux-hosted Textual UI again — the session list, the map and message log, and a nested client onto the selected agent — alongside `serve`/`ctl` for the editor. Textual is back as a runtime dependency; the editor backend is unchanged and still imports nothing from the UI.
 
 ### Fixed
 - Message log **clear**: orphaned (grey) lines from sessions the user ungrouped or closed are wiped too. A running `serve` now empties its already-collected log on *any* `cleared.json` write — even when the clear had no live transcript left to watermark — instead of skipping the wipe when the watermark set was unchanged.
-
 ## [0.4.1] - 2026-09-24
 
 ### Fixed
