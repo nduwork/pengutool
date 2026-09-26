@@ -61,6 +61,9 @@ function harness() {
       require: (id) => {
         if (id === 'vscode') return vscode;
         if (id === './util') return ctl;
+        // These tests exercise the legacy tmux path (getConfiguration -> 'pengupool' != 'control'),
+        // so the control terminal is never constructed; a stub is enough to load terminals.ts.
+        if (id === './controlTerminal') return { ControlTerminal: class { showPane() { return Promise.resolve(); } close() {} } };
         if (id === 'child_process') return { spawn };
         throw new Error('Unexpected dependency: ' + id);
       },

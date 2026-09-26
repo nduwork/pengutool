@@ -203,11 +203,25 @@
           "type": "string",
           "default": "pengupool",
           "description": "Path to the pengupool CLI. `<command> serve` streams NDJSON; `<command> ctl …` runs mutations."
+        },
+        "pengupool.terminalMode": {
+          "type": "string",
+          "enum": [
+            "control",
+            "tmux"
+          ],
+          "enumDescriptions": [
+            "VS Code renders each pane (native selection, copy, scroll, and find); tmux keeps the session alive. Recommended.",
+            "Run a real tmux client in the terminal (legacy): tmux draws the pane with its own copy-mode and mouse handling."
+          ],
+          "default": "control",
+          "markdownDescription": "How PenguPool displays sessions. `control` uses tmux control mode so VS Code renders the pane and selection/copy/scroll are native. `tmux` runs a normal `tmux attach`."
         }
       }
     }
   },
   "scripts": {
+    "postinstall": "node scripts/fix-node-pty.js",
     "test": "node --test tests/*.test.cjs",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
@@ -220,5 +234,8 @@
     "@vscode/vsce": "^4.0.0",
     "dagre": "^0.8.5",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
   }
 }

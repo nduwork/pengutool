@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
 import { Harness, SessionNode } from './serveClient';
 import { runCtl } from './util';
+import { ControlTerminal } from './controlTerminal';
 
 const LEGACY_STATE_KEY = 'pengupool.attachedTerminals';
+
+/** tmux `-L` socket per harness; one sessions server each (matches the Python harness module). */
+const SOCKET: Record<Harness, string> = { cc: 'pengupool', pi: 'pengupool-pi' };
 
 function flatten(roots: SessionNode[]): SessionNode[] {
   const out: SessionNode[] = [];
@@ -31,6 +35,7 @@ export class TerminalManager implements vscode.Disposable {
     ['pi', { name: 'PenguPool · pi', viewId: newViewId() }],
   ]);
   private roots: SessionNode[] = [];
+  private readonly control = new Map<Harness, ControlTerminal>();
   private readonly disp: vscode.Disposable[] = [];
   private readonly legacyNames = new Set<string>();
   private legacySwept = false;  // the one post-activation sweep for restored old-build terminals
@@ -40,6 +45,10 @@ export class TerminalManager implements vscode.Disposable {
     this.disp.push(vscode.window.onDidOpenTerminal((terminal) => this.removeLegacyTerminal(terminal)));
     this.disp.push(vscode.window.onDidChangeActiveTerminal(() => this.updateActiveContext()));
     this.disp.push(vscode.window.onDidCloseTerminal((terminal) => {
+      // Close the control session *before* clearing slot.term; the two comparisons share that pointer.
+      for (const [harness, control] of [...this.control]) {
+        if (terminal === this.slot(harness).term) { this.control.delete(harness); control.close(); }
+      }
       for (const slot of this.slots.values()) {
         if (terminal === slot.term) {
           slot.term = undefined;
@@ -54,6 +63,12 @@ export class TerminalManager implements vscode.Disposable {
 
   private slot(harness?: string): Slot {
     return this.slots.get(harness as Harness) ?? this.slots.get('cc')!;
+  }
+
+  /** Control mode (the default) renders panes with VS Code so selection and copy are native; the
+   *  legacy `tmux` mode runs a real tmux client in the terminal instead. */
+  private controlMode(): boolean {
+    return vscode.workspace.getConfiguration('pengupool').get<string>('terminalMode', 'control') === 'control';
   }
 
   private owns(terminal: vscode.Terminal): boolean {
@@ -115,7 +130,7 @@ export class TerminalManager implements vscode.Disposable {
     return !!slot.term && slot.term.exitStatus === undefined;
   }
 
-  private open(stdout: string, id?: string): boolean {
+  private open(stdout: string, id?: string, force = false): boolean {
     let view: { command: string; pane: string; cwd: string; harness?: string };
     try {
       view = JSON.parse(stdout);
@@ -128,7 +143,14 @@ export class TerminalManager implements vscode.Disposable {
       return false;
     }
 
+    if (this.controlMode()) { return this.openControl(view, id, force); }
+
     const slot = this.slot(view.harness);
+    // Drop any control client synchronously: leaving it in the map while its terminal is disposed could
+    // let a quick switch back reuse it against a slot.term that now points elsewhere.
+    const harness: Harness = (view.harness as Harness) ?? 'cc';
+    const stale = this.control.get(harness);
+    if (stale) { this.control.delete(harness); stale.close(); }
     slot.term?.dispose();
     slot.term = vscode.window.createTerminal({
       name: slot.name,
@@ -155,8 +177,45 @@ export class TerminalManager implements vscode.Disposable {
     return true;
   }
 
+  /** Open (or reuse) the harness's control-mode terminal and paint `view.pane` in it. */
+  private openControl(view: { pane: string; cwd: string; harness?: string }, id?: string, force = false): boolean {
+    const harness: Harness = (view.harness as Harness) ?? 'cc';
+    const slot = this.slot(harness);
+    let term = this.control.get(harness);
+    if (term && !this.usable(slot)) { this.control.delete(harness); term = undefined; }
+    let terminal = term ? slot.term : undefined;
+    if (!term) {
+      slot.term?.dispose();  // a legacy tmux terminal left over from a terminalMode switch
+      term = new ControlTerminal({ socket: SOCKET[harness], view: `pv-ext-${slot.viewId}`, base: 'pengupool',
+                                   cwd: view.cwd || undefined });
+      this.control.set(harness, term);
+      terminal = vscode.window.createTerminal({ name: slot.name, pty: term, isTransient: true });
+      slot.term = terminal;
+    }
+    void term.showPane(view.pane, force);
+    slot.currentId = id;
+    slot.pending = id ? undefined : { pane: view.pane, cwd: view.cwd };
+    terminal?.show();
+    this.updateActiveContext();
+    if (!id) { this.reconcile(this.roots); }
+    return true;
+  }
+
   /** Switch the harness's extension terminal to a session without restarting that session. */
   async switchTo(node: SessionNode, offerAdopt = true): Promise<boolean> {
+    if (this.controlMode()) { return this.switchControl(node, offerAdopt); }
+    // A terminalMode change from control to tmux: drop the control client and its terminal so the
+    // tmux path below starts clean (otherwise it would reuse the pty terminal via ctl select).
+    const staleHarness: Harness = (node.harness as Harness) ?? 'cc';
+    const stale = this.control.get(staleHarness);
+    if (stale) {
+      this.control.delete(staleHarness);
+      stale.close();
+      const staleSlot = this.slot(staleHarness);
+      staleSlot.term?.dispose();
+      staleSlot.term = undefined;
+      staleSlot.currentId = undefined;
+    }
     const slot = this.slot(node.harness);
     if (this.usable(slot) && slot.currentId === node.id) {
       slot.term!.show();
@@ -182,6 +241,22 @@ export class TerminalManager implements vscode.Disposable {
       slot.currentId = undefined;
     }
 
+    const attached = await runCtl(['--json', 'attach', node.id, node.name, slot.viewId]);
+    if (attached.code === 0 && attached.stdout) { return this.open(attached.stdout, node.id); }
+    if (attached.code === 2 && offerAdopt) { return this.offerAdopt(node); }
+    if (attached.code !== 2) {
+      vscode.window.showErrorMessage(`PenguPool: ${attached.stderr || 'could not attach session'}`);
+    }
+    return false;
+  }
+
+  /** Control-mode switch: resolve the session's pane (read-only) and repaint the terminal onto it. */
+  private async switchControl(node: SessionNode, offerAdopt: boolean): Promise<boolean> {
+    const slot = this.slot(node.harness);
+    if (this.control.has(node.harness as Harness) && this.usable(slot) && slot.currentId === node.id) {
+      slot.term!.show();
+      return true;
+    }
     const attached = await runCtl(['--json', 'attach', node.id, node.name, slot.viewId]);
     if (attached.code === 0 && attached.stdout) { return this.open(attached.stdout, node.id); }
     if (attached.code === 2 && offerAdopt) { return this.offerAdopt(node); }
@@ -242,6 +317,7 @@ export class TerminalManager implements vscode.Disposable {
     // The pane id is unchanged, so a terminal already on it stays attached. Otherwise open the returned
     // view: switching by id could run before the new process is registered and drop the terminal.
     const slot = this.slot(node.harness);
+    if (this.controlMode()) { return this.open(result.stdout, node.id, true); }  // same pane, new screen
     if (this.usable(slot) && slot.currentId === node.id) { slot.term!.show(); return true; }
     return this.open(result.stdout, node.id);
   }
@@ -270,6 +346,7 @@ export class TerminalManager implements vscode.Disposable {
 
   dispose(): void {
     this.disp.forEach((disposable) => disposable.dispose());
+    this.control.clear();
     this.slots.forEach((slot) => slot.term?.dispose());
     void vscode.commands.executeCommand('setContext', 'pengupool.claudeTerminal', false);
   }

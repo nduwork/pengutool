@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Control-mode terminals (default).** Session panes are now rendered by VS Code through tmux's
+  control mode instead of a real `tmux attach`, so selection, copy/paste, scrolling, and find behave
+  like any other VS Code terminal; tmux still keeps the session alive when you close the editor.
+  Mouse-tracking sequences from agents are dropped so the host keeps the mouse. Set
+  `pengupool.terminalMode` to `tmux` to restore the old terminal.
+
 ## 0.3.0
 
 - Added a **clear** button to the message log panel that wipes the cross-session message log
