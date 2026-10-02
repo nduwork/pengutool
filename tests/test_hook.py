@@ -55,3 +55,35 @@ def test_hook_round_trip_preserves_settings(tmp_path):
     hook.uninstall(settings)
     hook.uninstall(settings)
     assert json.loads(settings.read_text()) == original
+
+
+def test_install_wraps_the_status_line_and_uninstall_restores_it(tmp_path):
+    settings = tmp_path / 'settings.json'
+    original = {'type': 'command', 'command': "npx -y ccstatusline@latest", 'padding': 0, 'refreshInterval': 10}
+    settings.write_text(json.dumps({'statusLine': original}))
+    hook.install(settings)
+    hook.install(settings)  # idempotent: never wraps its own wrapper
+    line = json.loads(settings.read_text())['statusLine']
+    assert line == {**original, 'command': f"{hook.STATUS} -- 'npx -y ccstatusline@latest'"}
+    hook.uninstall(settings)
+    assert json.loads(settings.read_text())['statusLine'] == original
+
+
+def test_install_adds_a_silent_status_line_when_none_is_set(tmp_path):
+    settings = tmp_path / 'settings.json'
+    hook.install(settings)
+    assert json.loads(settings.read_text())['statusLine'] == {'type': 'command', 'command': hook.STATUS}
+    hook.uninstall(settings)
+    assert 'statusLine' not in json.loads(settings.read_text())
+
+
+def test_install_repins_a_stale_wrapper_and_leaves_an_outer_wrapper_alone(tmp_path):
+    settings = tmp_path / 'settings.json'
+    stale = "/old/venv/bin/python -m pengupool.statusline -- 'echo hi'"
+    settings.write_text(json.dumps({'statusLine': {'type': 'command', 'command': stale}}))
+    hook.install(settings)
+    assert json.loads(settings.read_text())['statusLine']['command'] == f"{hook.STATUS} -- 'echo hi'"
+    outer = f'bash "/stable/statusline.sh" -- {hook.shlex.quote(hook.STATUS)}'
+    settings.write_text(json.dumps({'statusLine': {'type': 'command', 'command': outer}}))
+    hook.uninstall(settings)
+    assert json.loads(settings.read_text())['statusLine']['command'] == outer

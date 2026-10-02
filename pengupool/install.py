@@ -123,10 +123,10 @@ def check(h: str) -> bool:
     if h == "cc":
         try:
             text = _settings().read_text()
-            wired = "pengupool.context" in text and "pengupool.routing" in text
+            wired = all(m in text for m in ("pengupool.context", "pengupool.routing", "pengupool.statusline"))
         except OSError:
             wired = False
-        print(f"{'✓' if wired else '✗'} Claude Code lifecycle hooks and SendMessage guard in {_settings()}")
+        print(f"{'✓' if wired else '✗'} Claude Code lifecycle hooks, SendMessage guard and ctx % status line in {_settings()}")
         return ok and wired
     wired = _pi_extension().is_file() and _unbaked(_pi_extension().read_text()) == EXTENSION.read_text()
     print(f"{'✓' if wired else '✗'} PenguPool pi extension at {_pi_extension()}"
